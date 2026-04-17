@@ -29,13 +29,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 @Composable
 fun FlappyCoinsGame(
@@ -45,75 +47,86 @@ fun FlappyCoinsGame(
     onLose: (Long) -> Unit,
     onWoohoo: () -> Unit,
 ) {
+    var running by remember { mutableStateOf(true) }
     var birdY by remember { mutableFloatStateOf(0.5f) }
-    var velocityY by remember { mutableFloatStateOf(0f) }
+    var birdVelocity by remember { mutableFloatStateOf(0f) }
     var pipeX by remember { mutableFloatStateOf(1.2f) }
     var gapCenter by remember { mutableFloatStateOf(0.5f) }
-    var coinsCollected by remember { mutableIntStateOf(0) }
     var pipesCleared by remember { mutableIntStateOf(0) }
-    var streak by remember { mutableIntStateOf(0) }
-    var running by remember { mutableStateOf(true) }
-    var passedCurrentPipe by remember { mutableStateOf(false) }
+    var coinsCollected by remember { mutableIntStateOf(0) }
+    var currentStreak by remember { mutableIntStateOf(0) }
+    var pipeAlreadyScored by remember { mutableStateOf(false) }
+    var coinAlreadyScored by remember { mutableStateOf(false) }
     var showWoohoo by remember { mutableStateOf(false) }
     val woohooAlpha = remember { Animatable(0f) }
-    val woohooScale = remember { Animatable(0.7f) }
-    val density = LocalDensity.current
+    val woohooScale = remember { Animatable(0.8f) }
 
     val gravity = 0.4f
     val flapForce = -8f
-    val gapHeight = 0.34f
+    val baseSpeed = 0.0075f
+    val birdX = 0.25f
+    val birdRadius = 0.05f
     val pipeWidth = 0.16f
-    val baseSpeed = 0.0085f
-    val birdX = 0.26f
+    val gapHeight = 0.36f
 
     LaunchedEffect(running, speedMultiplier) {
         if (!running) return@LaunchedEffect
         while (running) {
             delay(16)
-            velocityY += gravity
-            birdY += velocityY / 100f
+            birdVelocity += gravity
+            birdY += birdVelocity / 100f
             pipeX -= baseSpeed * speedMultiplier.coerceAtLeast(0.7f)
 
-            val gapTop = gapCenter - (gapHeight / 2f)
-            val gapBottom = gapCenter + (gapHeight / 2f)
-            val overlapsPipeX = birdX + 0.04f > pipeX && birdX - 0.04f < pipeX + pipeWidth
-            val inGap = birdY in gapTop..gapBottom
+            val gapTop = gapCenter - gapHeight / 2f
+            val gapBottom = gapCenter + gapHeight / 2f
 
-            if (birdY <= 0f || birdY >= 1f || (overlapsPipeX && !inGap)) {
+            val birdRect = Rect(
+                left = birdX - birdRadius,
+                top = birdY - birdRadius,
+                right = birdX + birdRadius,
+                bottom = birdY + birdRadius,
+            )
+            val topPipeRect = Rect(pipeX, 0f, pipeX + pipeWidth, gapTop)
+            val bottomPipeRect = Rect(pipeX, gapBottom, pipeX + pipeWidth, 1f)
+
+            if (birdY <= 0f || birdY >= 1f || birdRect.overlaps(topPipeRect) || birdRect.overlaps(bottomPipeRect)) {
                 running = false
                 onLose(350L)
                 break
             }
 
-            if (!passedCurrentPipe && pipeX + pipeWidth < birdX) {
-                passedCurrentPipe = true
-                pipesCleared += 1
-                streak += 1
-                onWin((400L * pipesCleared).coerceAtLeast(400L))
-                if (streak >= 3) {
-                    showWoohoo = true
-                    onWoohoo()
-                    woohooAlpha.snapTo(1f)
-                    woohooScale.snapTo(0.7f)
-                    woohooScale.animateTo(1.1f, animationSpec = tween(220, easing = FastOutSlowInEasing))
-                    woohooScale.animateTo(1f, animationSpec = tween(200, easing = FastOutSlowInEasing))
-                    woohooAlpha.animateTo(0f, animationSpec = tween(600, easing = FastOutSlowInEasing))
-                    showWoohoo = false
-                    streak = 0
-                }
-            }
-
             val coinX = pipeX + pipeWidth / 2f
             val coinY = gapCenter
-            val hitCoin = kotlin.math.abs(coinX - birdX) < 0.05f && kotlin.math.abs(coinY - birdY) < 0.05f
-            if (hitCoin) {
+            val coinRect = Rect(coinX - 0.02f, coinY - 0.02f, coinX + 0.02f, coinY + 0.02f)
+            if (!coinAlreadyScored && birdRect.overlaps(coinRect)) {
+                coinAlreadyScored = true
                 coinsCollected += 1
+                onWin(25L + currentStreak * 3L)
+            }
+
+            if (!pipeAlreadyScored && pipeX + pipeWidth < birdX) {
+                pipeAlreadyScored = true
+                pipesCleared += 1
+                currentStreak += 1
+                onWin(400L * pipesCleared)
+                if (currentStreak >= 3) {
+                    onWoohoo()
+                    showWoohoo = true
+                    woohooAlpha.snapTo(1f)
+                    woohooScale.snapTo(0.8f)
+                    woohooScale.animateTo(1.12f, tween(230, easing = FastOutSlowInEasing))
+                    woohooScale.animateTo(1f, tween(160, easing = FastOutSlowInEasing))
+                    woohooAlpha.animateTo(0f, tween(620, easing = FastOutSlowInEasing))
+                    showWoohoo = false
+                    currentStreak = 0
+                }
             }
 
             if (pipeX < -pipeWidth) {
                 pipeX = 1.2f
-                gapCenter = (0.28f..0.72f).random()
-                passedCurrentPipe = false
+                gapCenter = Random.nextFloat() * 0.44f + 0.28f
+                pipeAlreadyScored = false
+                coinAlreadyScored = false
             }
         }
     }
@@ -121,8 +134,8 @@ fun FlappyCoinsGame(
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Flappy Coins", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
         Text(
-            "Coins ✦ $coinsCollected  |  Pipes $pipesCleared  |  Lane ${index % 4 + 1}",
-            color = Color.White.copy(alpha = 0.84f),
+            "Coins $coinsCollected  |  Pipes $pipesCleared  |  Lane ${index % 4 + 1}",
+            color = Color.White.copy(alpha = 0.8f),
             fontSize = 14.sp,
         )
 
@@ -137,15 +150,16 @@ fun FlappyCoinsGame(
                         if (!running) {
                             running = true
                             birdY = 0.5f
-                            velocityY = flapForce
+                            birdVelocity = flapForce
                             pipeX = 1.2f
                             gapCenter = 0.5f
                             pipesCleared = 0
-                            streak = 0
                             coinsCollected = 0
-                            passedCurrentPipe = false
+                            currentStreak = 0
+                            pipeAlreadyScored = false
+                            coinAlreadyScored = false
                         } else {
-                            velocityY = flapForce
+                            birdVelocity = flapForce
                         }
                     }
                 },
@@ -153,62 +167,34 @@ fun FlappyCoinsGame(
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
-                val birdRadius = with(density) { 14.dp.toPx() }
-
-                val px = pipeX * w
-                val pw = pipeWidth * w
+                val pipeLeft = pipeX * w
+                val pipeW = pipeWidth * w
                 val gapTopPx = (gapCenter - gapHeight / 2f) * h
                 val gapBottomPx = (gapCenter + gapHeight / 2f) * h
-
-                drawRect(
-                    color = Color(0xFF5B21B6),
-                    topLeft = androidx.compose.ui.geometry.Offset(px, 0f),
-                    size = androidx.compose.ui.geometry.Size(pw, gapTopPx),
-                )
-                drawRect(
-                    color = Color(0xFF5B21B6),
-                    topLeft = androidx.compose.ui.geometry.Offset(px, gapBottomPx),
-                    size = androidx.compose.ui.geometry.Size(pw, h - gapBottomPx),
-                )
+                drawRect(color = Color(0xFF5B21B6), topLeft = Offset(pipeLeft, 0f), size = androidx.compose.ui.geometry.Size(pipeW, gapTopPx))
+                drawRect(color = Color(0xFF5B21B6), topLeft = Offset(pipeLeft, gapBottomPx), size = androidx.compose.ui.geometry.Size(pipeW, h - gapBottomPx))
 
                 val coinX = (pipeX + pipeWidth / 2f) * w
                 val coinY = gapCenter * h
-                drawCircle(color = Color(0xFFFFD700), radius = with(density) { 6.dp.toPx() }, center = androidx.compose.ui.geometry.Offset(coinX, coinY))
-
-                drawCircle(
-                    color = Color(0xFFFFD700),
-                    radius = birdRadius,
-                    center = androidx.compose.ui.geometry.Offset(birdX * w, birdY * h),
-                )
+                if (!coinAlreadyScored) {
+                    drawCircle(color = Color(0xFFFFD700), radius = 7f, center = Offset(coinX, coinY))
+                }
+                drawCircle(color = Color(0xFFFFD700), radius = 14f, center = Offset(birdX * w, birdY * h))
             }
 
             if (!running) {
-                Text(
-                    text = "Tap to restart",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                Text("Tap to restart", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
             }
 
-            androidx.compose.animation.AnimatedVisibility(
-                visible = showWoohoo,
-                modifier = Modifier.align(Alignment.Center),
-            ) {
+            AnimatedVisibility(visible = showWoohoo, modifier = Modifier.align(Alignment.Center)) {
                 Text(
-                    text = "Woohoo! 🎉",
+                    "Woohoo! 🎉",
                     color = Color.White,
                     fontSize = 34.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier
-                        .alpha(woohooAlpha.value)
-                        .scale(woohooScale.value),
+                    modifier = Modifier.alpha(woohooAlpha.value).scale(woohooScale.value),
                 )
             }
         }
     }
-}
-
-private fun ClosedFloatingPointRange<Float>.random(): Float {
-    return (start + Math.random() * (endInclusive - start)).toFloat()
 }

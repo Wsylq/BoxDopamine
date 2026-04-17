@@ -1,80 +1,159 @@
 package com.dopaminebox.app.viewmodel
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.dopaminebox.app.model.FeedEvent
 import com.dopaminebox.app.model.MiniGameType
 import com.dopaminebox.app.model.PlayerState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlin.math.max
-import kotlin.random.Random
 
-class DopamineViewModel : ViewModel() {
-    var playerState by mutableStateOf(PlayerState())
-        private set
+private val Context.dopamineStore by preferencesDataStore(name = "dopamine_box_store")
 
-    var feed by mutableStateOf(seedFeed())
-        private set
+class DopamineViewModel(application: Application) : AndroidViewModel(application) {
+    private val context = application.applicationContext
+
+    private val coinsKey = longPreferencesKey("coins")
+    private val streakKey = intPreferencesKey("streak_days")
+    private val lastOpenKey = stringPreferencesKey("last_open_date")
+
+    private val _playerState = MutableStateFlow(PlayerState())
+    val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
+
+    private val _feed = MutableStateFlow(seedFeed())
+    val feed: StateFlow<List<FeedEvent>> = _feed.asStateFlow()
+
+    private val _streakWarning = MutableStateFlow(false)
+    val streakWarning: StateFlow<Boolean> = _streakWarning.asStateFlow()
+
+    private val _showJackpotCelebration = MutableStateFlow(false)
+    val showJackpotCelebration: StateFlow<Boolean> = _showJackpotCelebration.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            hydrateFromDiskAndTrackOpen()
+        }
+    }
 
     fun accelerateFeed(swipesPerSecond: Float) {
-        playerState = playerState.copy(
-            scrollSpeedMultiplier = (1f + swipesPerSecond / 4f).coerceIn(1f, 3.5f)
+        _playerState.value = _playerState.value.copy(
+            scrollSpeedMultiplier = (1f + swipesPerSecond / 3.5f).coerceIn(1f, 3.8f),
         )
     }
 
     fun onWin(reward: Long) {
-        playerState = playerState.copy(
-            coins = playerState.coins + reward,
-            lastReward = reward,
-            streakDays = playerState.streakDays + if (Random.nextFloat() > 0.7f) 1 else 0,
-        )
-        maybeAppendFeed()
+        val updatedCoins = _playerState.value.coins + reward
+        _playerState.value = _playerState.value.copy(coins = updatedCoins, lastReward = reward)
+        if (updatedCoins >= 10_000_000L) {
+            _showJackpotCelebration.value = true
+        }
+        appendFeed(extraDepth = 1)
+        persistCoinsAndStreak()
     }
 
     fun onLose(penalty: Long) {
-        val nextCoins = max(0L, playerState.coins - penalty)
-        playerState = playerState.copy(coins = nextCoins, lastReward = -penalty)
-        maybeAppendFeed(extraDepth = 4)
+        val nextCoins = max(0L, _playerState.value.coins - penalty)
+        _playerState.value = _playerState.value.copy(coins = nextCoins, lastReward = -penalty)
+        appendFeed(extraDepth = 3)
+        persistCoinsAndStreak()
     }
 
     fun ensureFeedForIndex(targetIndex: Int) {
         if (targetIndex < 0) return
-        if (targetIndex < feed.size - 2) return
-        val missing = (targetIndex - feed.lastIndex + 6).coerceAtLeast(2)
-        maybeAppendFeed(extraDepth = missing)
+        val remainingAhead = _feed.value.lastIndex - targetIndex
+        if (remainingAhead >= 10) return
+        appendFeed(extraDepth = (10 - remainingAhead).coerceAtLeast(4))
     }
 
-    fun resetRun() {
-        playerState = playerState.copy(coins = 1_000, lastReward = 0, scrollSpeedMultiplier = 1f)
-        feed = seedFeed()
+    fun consumeStreakWarning() {
+        _streakWarning.value = false
     }
 
-    private fun maybeAppendFeed(extraDepth: Int = 2) {
-        val nextId = (feed.lastOrNull()?.id ?: 0L) + 1
-        val additions = List(extraDepth) { index ->
-            val game = MiniGameType.entries.random()
+    fun consumeJackpotAndReset() {
+        _showJackpotCelebration.value = false
+        _playerState.value = _playerState.value.copy(coins = 1_000L, lastReward = 0L)
+        persistCoinsAndStreak()
+    }
+
+    private fun appendFeed(extraDepth: Int) {
+        val current = _feed.value
+        val startId = (current.lastOrNull()?.id ?: 0L) + 1L
+        val additions = List(extraDepth) { idx ->
+            val game = MiniGameType.values()[(startId.toInt() + idx) % MiniGameType.values().size]
             FeedEvent(
-                id = nextId + index,
+                id = startId + idx,
                 title = when (game) {
                     MiniGameType.COIN_FLIP -> "Coin Flip Rush"
                     MiniGameType.HIGHER_LOWER -> "Higher or Lower"
                     MiniGameType.PLINKO -> "Plinko Drop"
                     MiniGameType.FLAPPY_COINS -> "Flappy Coins"
                 },
-                subtitle = "Win big and keep scrolling",
+                subtitle = "Win to stay. Lose to swipe deeper.",
                 gameType = game,
             )
         }
-        feed = feed + additions
+        _feed.value = current + additions
     }
 
-    private fun seedFeed(): List<FeedEvent> = List(12) { i ->
-        val game = MiniGameType.entries[i % MiniGameType.entries.size]
+    private suspend fun hydrateFromDiskAndTrackOpen() {
+        val prefs = context.dopamineStore.data.first()
+        val storedCoins = prefs[coinsKey] ?: 1_000L
+        val storedStreak = prefs[streakKey] ?: 0
+        val lastOpenRaw = prefs[lastOpenKey]
+        val today = LocalDate.now()
+
+        val (nextStreak, warning) = computeStreak(storedStreak, lastOpenRaw, today)
+        _playerState.value = _playerState.value.copy(coins = storedCoins, streakDays = nextStreak)
+        _streakWarning.value = warning
+
+        context.dopamineStore.edit {
+            it[lastOpenKey] = today.toString()
+            it[streakKey] = nextStreak
+            it[coinsKey] = storedCoins
+        }
+    }
+
+    private fun computeStreak(storedStreak: Int, lastOpenRaw: String?, today: LocalDate): Pair<Int, Boolean> {
+        if (lastOpenRaw == null) return 1 to false
+        val lastOpen = runCatching { LocalDate.parse(lastOpenRaw) }.getOrNull() ?: return 1 to false
+        val delta = ChronoUnit.DAYS.between(lastOpen, today)
+        return when {
+            delta <= 0L -> storedStreak.coerceAtLeast(1) to false
+            delta == 1L -> (storedStreak + 1).coerceAtLeast(1) to false
+            else -> 0 to true
+        }
+    }
+
+    private fun persistCoinsAndStreak() {
+        val state = _playerState.value
+        viewModelScope.launch {
+            context.dopamineStore.edit { prefs: MutablePreferences ->
+                prefs[coinsKey] = state.coins
+                prefs[streakKey] = state.streakDays
+            }
+        }
+    }
+
+    private fun seedFeed(): List<FeedEvent> = List(24) { i ->
+        val game = MiniGameType.values()[i % MiniGameType.values().size]
         FeedEvent(
             id = i.toLong(),
             title = "Dopamine Round ${i + 1}",
-            subtitle = "One tap away from a bigger hit",
+            subtitle = "Chase the next hit",
             gameType = game,
         )
     }
