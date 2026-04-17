@@ -1,6 +1,6 @@
 /* ============================================================
    DOPAMINE BOX - Global Styles
-   Dark, casino-inspired UI
+   Dark, casino-inspired UI — Phone Only
    ============================================================ */
 
    @import "tailwindcss";
@@ -12,8 +12,7 @@
      --dopamine-red: #ef4444;
      --dopamine-blue: #60a5fa;
      --dopamine-purple: #a78bfa;
-     --bg-dark: #0a0a0a;
-     --bg-card: rgba(255, 255, 255, 0.05);
+     --bg-dark: #000000;
    }
    
    /* Reset & base */
@@ -25,31 +24,27 @@
    
    html, body, #root {
      height: 100%;
+     height: 100dvh;
      margin: 0;
      padding: 0;
      overflow: hidden;
      overscroll-behavior: none;
-     background: #0a0a0a;
+     background: #000;
    }
    
    body {
-     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 
-                  'Helvetica Neue', 'Segoe UI', Roboto, sans-serif;
+     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+                  'Helvetica Neue', 'Inter', 'Segoe UI', Roboto, sans-serif;
      -webkit-font-smoothing: antialiased;
      -moz-osx-font-smoothing: grayscale;
      color: white;
    }
    
-   /* Hide scrollbars but keep scroll */
-   ::-webkit-scrollbar {
-     display: none;
-   }
-   * {
-     scrollbar-width: none;
-     -ms-overflow-style: none;
-   }
+   /* Hide scrollbars */
+   ::-webkit-scrollbar { display: none; }
+   * { scrollbar-width: none; -ms-overflow-style: none; }
    
-   /* Keyframe animations */
+   /* Keyframes */
    @keyframes shimmer {
      0% { transform: translateX(-200%); }
      100% { transform: translateX(200%); }
@@ -106,22 +101,15 @@
      image-rendering: crisp-edges;
    }
    
-   /* iOS-style momentum scrolling */
+   /* iOS momentum scroll */
    .scroll-view {
      -webkit-overflow-scrolling: touch;
      overflow-y: auto;
      overscroll-behavior: contain;
    }
    
-   /* Shake animation class */
-   .shake {
-     animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-   }
-   
-   /* Win pulse class */
-   .win-pulse {
-     animation: win-pulse 0.4s ease-in-out;
-   }
+   .shake { animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+   .win-pulse { animation: win-pulse 0.4s ease-in-out; }
    
    /* Gold gradient text */
    .gold-text {
@@ -131,22 +119,30 @@
      background-clip: text;
    }
    
-   /* Glow effects */
+   /* Glow */
    .glow-green { text-shadow: 0 0 20px rgba(34, 197, 94, 0.6); }
    .glow-gold { text-shadow: 0 0 20px rgba(255, 215, 0, 0.6); }
    .glow-red { text-shadow: 0 0 20px rgba(239, 68, 68, 0.6); }
    
-   /* Prevent text selection */
+   /* No select */
    .no-select {
      -webkit-user-select: none;
      user-select: none;
      pointer-events: none;
    }
    
-   /* iOS-style blur */
+   /* iOS blur */
    .blur-bg {
      background: rgba(0, 0, 0, 0.6);
      backdrop-filter: blur(20px);
      -webkit-backdrop-filter: blur(20px);
+   }
+   
+   /* Liquid glass effect */
+   .glass {
+     background: rgba(28, 28, 30, 0.82);
+     backdrop-filter: blur(40px) saturate(180%);
+     -webkit-backdrop-filter: blur(40px) saturate(180%);
+     border: 1px solid rgba(255, 255, 255, 0.12);
    }
    

@@ -1,12 +1,15 @@
 // ============================================================
-// COIN FLIP GAME
+// DOPAMINE BOX - Coin Flip Game
+// Double or Nothing with "Double Down?" mechanic
 // ============================================================
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { haptic, sound, formatCurrency } from '../store/gameStore';
 
 type CoinSide = 'heads' | 'tails';
-const BET_OPTIONS = [25, 50, 100, 250, 500, 1000];
+type GameState = 'betting' | 'flipping' | 'result' | 'doubledown';
+
+const BET_OPTIONS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
 
 interface CoinFlipProps {
   balance: number;
@@ -15,243 +18,333 @@ interface CoinFlipProps {
 }
 
 const CoinFlip: React.FC<CoinFlipProps> = ({ balance, onResult, onClose }) => {
-  const [choice, setChoice] = useState<CoinSide | null>(null);
-  const [bet, setBet] = useState(100);
+  const [bet, setBet] = useState(25);
+  const [side, setSide] = useState<CoinSide>('heads');
+  const [gameState, setGameState] = useState<GameState>('betting');
+  const [isFlipping, setIsFlipping] = useState(false);
   const [result, setResult] = useState<CoinSide | null>(null);
-  const [gameState, setGameState] = useState<'betting' | 'flipping' | 'result'>('betting');
   const [won, setWon] = useState<boolean | null>(null);
-
-  const handleChoice = (side: CoinSide) => {
-    haptic.light();
-    sound.playClick();
-    setChoice(side);
-  };
-
-  const flip = useCallback(() => {
-    if (!choice || bet > balance || bet <= 0) return;
-    haptic.medium();
-    sound.playClick();
-
-    setGameState('flipping');
-
-    setTimeout(() => {
-      const outcome: CoinSide = Math.random() < 0.5 ? 'heads' : 'tails';
-      const didWin = outcome === choice;
-      setResult(outcome);
-      setWon(didWin);
-      setGameState('result');
-
-      if (didWin) {
-        haptic.win();
-        sound.playWin();
-      } else {
-        haptic.lose();
-        sound.playLose();
-      }
-
-      onResult(didWin ? bet : -bet, didWin);
-    }, 1800);
-  }, [choice, bet, balance, onResult]);
-
-  const reset = () => {
-    setResult(null);
-    setWon(null);
-    setChoice(null);
-    setGameState('betting');
-    haptic.light();
-  };
+  const [_totalWinnings, setTotalWinnings] = useState(0);
+  const [doubleCount, setDoubleCount] = useState(0);
 
   const safeBet = Math.min(bet, balance);
 
+  const flip = (currentBet: number, isDoubleDown = false) => {
+    setIsFlipping(true);
+    setGameState('flipping');
+    haptic.medium();
+    sound.playClick();
+
+    setTimeout(() => {
+      const outcome: CoinSide = Math.random() < 0.5 ? 'heads' : 'tails';
+      setResult(outcome);
+      const didWin = outcome === side;
+
+      if (didWin) {
+        const winAmount = isDoubleDown ? currentBet : currentBet;
+        setTotalWinnings(prev => prev + winAmount);
+        haptic.win();
+        sound.playWin();
+        setWon(true);
+        setIsFlipping(false);
+        // Offer double down after winning
+        setTimeout(() => {
+          setGameState('doubledown');
+        }, 600);
+      } else {
+        haptic.lose();
+        sound.playLose();
+        setWon(false);
+        setIsFlipping(false);
+        const loss = isDoubleDown ? currentBet : currentBet;
+        onResult(-loss, false);
+        setTimeout(() => setGameState('result'), 400);
+      }
+    }, 1200);
+  };
+
+  const handleFlip = () => {
+    if (balance < safeBet) return;
+    setTotalWinnings(0);
+    setDoubleCount(0);
+    onResult(-safeBet, false); // deduct first
+    flip(safeBet);
+  };
+
+  const handleDoubleDown = () => {
+    const newBet = safeBet * Math.pow(2, doubleCount + 1);
+    if (balance < newBet) {
+      // Can't afford, just cash out
+      handleCashOut();
+      return;
+    }
+    setDoubleCount(c => c + 1);
+    haptic.heavy();
+    sound.playCardFlip();
+    onResult(-newBet, false); // deduct doubled bet
+    flip(newBet, true);
+  };
+
+  const handleCashOut = () => {
+    // They already banked the win from the initial flip result chain
+    const finalWin = safeBet * Math.pow(2, doubleCount + 1);
+    onResult(finalWin, true);
+    haptic.success();
+    sound.playWin();
+    setGameState('result');
+    setWon(true);
+  };
+
+  const reset = () => {
+    setGameState('betting');
+    setResult(null);
+    setWon(null);
+    setIsFlipping(false);
+    setTotalWinnings(0);
+    setDoubleCount(0);
+    haptic.light();
+  };
+
+  const potentialWin = safeBet * Math.pow(2, doubleCount + 1);
+
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      background: '#0a0a0a',
-      color: '#fff',
-      fontFamily: 'Inter, -apple-system, sans-serif',
-    }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '16px 20px',
-      }}>
-        <div style={{ fontSize: 20, fontWeight: 900 }}>🪙 Coin Flip</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#4ade80' }}>{formatCurrency(balance)}</div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255,255,255,0.1)',
-              border: 'none',
-              borderRadius: '50%',
-              width: 32,
-              height: 32,
-              color: '#fff',
-              fontSize: 16,
-              cursor: 'pointer',
-            }}
-          >✕</button>
-        </div>
+    <div className="flex flex-col h-full bg-black text-white select-none">
+      {/* TOP BAR */}
+      <div className="flex items-center justify-between px-5 pt-14 pb-2">
+        <span className="text-green-400 font-bold text-lg">${balance.toFixed(0)}</span>
+        <span className="text-white/40 text-xs tracking-widest uppercase">Double or Nothing</span>
+        <button onClick={onClose} className="text-white/50 text-2xl leading-none">×</button>
       </div>
 
-      {/* Coin */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20 }}>
-        <motion.div
-          animate={gameState === 'flipping' ? {
-            rotateY: [0, 180, 360, 540, 720, 900, 1080],
-            scale: [1, 1.1, 1, 1.1, 1],
-          } : {}}
-          transition={{ duration: 1.8, ease: 'easeInOut' }}
-          style={{
-            width: 140,
-            height: 140,
-            borderRadius: '50%',
-            background: gameState === 'result'
-              ? (won ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #ef4444, #991b1b)')
-              : 'linear-gradient(135deg, #FFD700, #FF8C00)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 70,
-            boxShadow: '0 0 60px rgba(255,215,0,0.4), 0 20px 40px rgba(0,0,0,0.5)',
-          }}
-        >
-          {gameState === 'flipping' ? '🪙' :
-           gameState === 'result' ? (result === 'heads' ? '👑' : '🌟') : '🪙'}
-        </motion.div>
+      {/* BET DISPLAY */}
+      {gameState !== 'betting' && (
+        <div className="flex items-center justify-center gap-6 px-5 py-1">
+          <div className="text-center">
+            <div className="text-white/40 text-xs">BET</div>
+            <div className="text-yellow-400 font-bold">{formatCurrency(safeBet)}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-white/40 text-xs">WIN</div>
+            <div className="text-green-400 font-bold">{formatCurrency(potentialWin)}</div>
+          </div>
+        </div>
+      )}
 
-        <AnimatePresence>
-          {gameState === 'result' && (
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+
+        {/* COIN */}
+        <AnimatePresence mode="wait">
+          {(gameState === 'flipping' || gameState === 'result' || gameState === 'doubledown') && (
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              style={{ textAlign: 'center' }}
+              key="coin"
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="relative mb-8"
             >
-              <div style={{ fontSize: 32, fontWeight: 900, color: won ? '#4ade80' : '#ef4444' }}>
-                {won ? '🎉 WIN!' : '💀 BUST'}
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: won ? '#4ade80' : '#ef4444' }}>
-                {won ? `+${formatCurrency(safeBet)}` : `-${formatCurrency(safeBet)}`}
-              </div>
-              <div style={{ fontSize: 14, color: '#888', marginTop: 4 }}>
-                Result: {result === 'heads' ? '👑 Heads' : '🌟 Tails'}
-              </div>
-            </motion.div>
-          )}
-          {gameState === 'flipping' && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              style={{ fontSize: 18, color: '#FFD700', fontWeight: 700 }}
-            >
-              Flipping... 🌀
+              <motion.div
+                animate={isFlipping ? {
+                  rotateY: [0, 360, 720, 1080],
+                  scale: [1, 1.1, 1, 1.1, 1],
+                } : { rotateY: 0 }}
+                transition={isFlipping ? { duration: 1.2, ease: 'easeInOut' } : { duration: 0.3 }}
+                style={{ transformStyle: 'preserve-3d' }}
+                className="w-36 h-36 rounded-full"
+              >
+                {/* Coin face */}
+                <div
+                  className="w-36 h-36 rounded-full flex items-center justify-center text-5xl shadow-2xl"
+                  style={{
+                    background: 'radial-gradient(circle at 35% 35%, #FFE066, #FFD700 45%, #CC9900 80%, #997700)',
+                    boxShadow: '0 0 40px rgba(255,215,0,0.5), inset 0 4px 8px rgba(255,255,255,0.4), inset 0 -4px 8px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  <span style={{
+                    fontSize: '2.5rem',
+                    filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))',
+                    color: '#7a5c00',
+                    fontWeight: 900,
+                    fontFamily: 'serif',
+                  }}>$</span>
+                </div>
+              </motion.div>
+
+              {/* Result badge */}
+              <AnimatePresence>
+                {won !== null && !isFlipping && (
+                  <motion.div
+                    initial={{ scale: 0, y: 10 }}
+                    animate={{ scale: 1, y: 0 }}
+                    className="absolute -bottom-3 left-1/2 -translate-x-1/2"
+                  >
+                    <div className={`px-4 py-1 rounded-full text-sm font-black ${won ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                      {result?.toUpperCase()}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
 
-      {/* Bottom controls */}
-      <div style={{ padding: '0 20px 32px' }}>
-        {gameState === 'betting' && (
-          <>
-            <div style={{ fontSize: 11, color: '#666', textAlign: 'center', letterSpacing: 2, marginBottom: 10, textTransform: 'uppercase' }}>Pick Your Side</div>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-              {(['heads', 'tails'] as CoinSide[]).map(side => (
-                <button
-                  key={side}
-                  onClick={() => handleChoice(side)}
-                  style={{
-                    flex: 1,
-                    padding: '16px 0',
-                    borderRadius: 14,
-                    background: choice === side ? 'linear-gradient(135deg, #FFD700, #FF8C00)' : 'rgba(255,255,255,0.07)',
-                    border: choice === side ? '2px solid #FFD700' : '2px solid rgba(255,255,255,0.1)',
-                    color: choice === side ? '#000' : '#fff',
-                    fontSize: 16,
-                    fontWeight: 900,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 4,
-                    fontFamily: 'Inter, sans-serif',
-                  }}
-                >
-                  <span style={{ fontSize: 28 }}>{side === 'heads' ? '👑' : '🌟'}</span>
-                  {side.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ fontSize: 11, color: '#666', textAlign: 'center', letterSpacing: 2, marginBottom: 10, textTransform: 'uppercase' }}>Choose Bet</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
-              {BET_OPTIONS.map(amount => (
-                <button
-                  key={amount}
-                  onClick={() => { setBet(amount); haptic.light(); sound.playCoin(); }}
-                  disabled={amount > balance}
-                  style={{
-                    padding: '10px 4px',
-                    borderRadius: 10,
-                    background: bet === amount ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.07)',
-                    border: bet === amount ? '2px solid #4ade80' : '2px solid rgba(255,255,255,0.1)',
-                    color: bet === amount ? '#4ade80' : '#aaa',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    opacity: amount > balance ? 0.3 : 1,
-                    fontFamily: 'Inter, sans-serif',
-                  }}
-                >
-                  ${amount}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={flip}
-              disabled={!choice || safeBet <= 0}
+        {/* FLIPPING STATE */}
+        {gameState === 'flipping' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4"
+          >
+            <div className="px-8 py-3 rounded-2xl text-white/60 text-base font-semibold tracking-wider"
               style={{
-                width: '100%',
-                padding: '16px',
-                borderRadius: 14,
-                background: choice && safeBet > 0 ? 'linear-gradient(135deg, #FF6B6B, #FF8E53)' : 'rgba(255,255,255,0.1)',
-                border: 'none',
-                color: choice && safeBet > 0 ? '#fff' : '#666',
-                fontSize: 18,
-                fontWeight: 900,
-                cursor: choice && safeBet > 0 ? 'pointer' : 'not-allowed',
-                fontFamily: 'Inter, sans-serif',
-                boxShadow: choice && safeBet > 0 ? '0 4px 24px rgba(255,107,107,0.4)' : 'none',
-              }}
-            >
-              🪙 FLIP IT!
-            </button>
-          </>
+                background: 'rgba(255,255,255,0.08)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.15)',
+              }}>
+              FLIPPING...
+            </div>
+          </motion.div>
         )}
 
+        {/* DOUBLE DOWN STATE */}
+        {gameState === 'doubledown' && (
+          <AnimatePresence>
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center gap-5 w-full max-w-xs"
+            >
+              <div className="text-center">
+                <div className="text-red-400 text-xs font-bold tracking-widest mb-1">MAXIMUM RISK</div>
+                <div className="text-white font-black text-4xl tracking-tight">DOUBLE DOWN?</div>
+                <div className="text-white/50 text-sm mt-1">One big win could get it all back</div>
+              </div>
+
+              <button
+                onClick={handleDoubleDown}
+                className="w-full py-4 rounded-2xl font-black text-lg text-white tracking-wide"
+                style={{
+                  background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                  boxShadow: '0 4px 30px rgba(34,197,94,0.4)',
+                }}
+              >
+                BET {formatCurrency(safeBet * Math.pow(2, doubleCount + 1))}
+              </button>
+
+              <button
+                onClick={handleCashOut}
+                className="w-full py-3 rounded-2xl font-bold text-base text-white/70 tracking-wide"
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                }}
+              >
+                TAKE {formatCurrency(safeBet * Math.pow(2, doubleCount + 1))} ✓
+              </button>
+            </motion.div>
+          </AnimatePresence>
+        )}
+
+        {/* RESULT STATE */}
+        {gameState === 'result' && (
+          <AnimatePresence>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col items-center gap-4"
+            >
+              <div className={`text-5xl font-black tracking-tight ${won ? 'text-green-400' : 'text-red-500'}`}
+                style={{ textShadow: won ? '0 0 30px rgba(34,197,94,0.6)' : '0 0 30px rgba(239,68,68,0.6)' }}>
+                {won ? 'WIN!' : 'WRONG!'}
+              </div>
+              <div className={`text-lg font-bold ${won ? 'text-green-300' : 'text-red-300'}`}>
+                {won ? `+${formatCurrency(potentialWin)}` : `-${formatCurrency(safeBet)}`}
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        )}
+
+        {/* BETTING STATE */}
+        {gameState === 'betting' && (
+          <div className="flex flex-col items-center gap-8 w-full">
+            {/* Side picker */}
+            <div className="flex flex-col items-center gap-3 w-full">
+              <div className="text-white/40 text-xs tracking-widest uppercase">Pick Your Side</div>
+              <div className="flex gap-3 w-full max-w-xs">
+                {(['heads', 'tails'] as CoinSide[]).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => { setSide(s); haptic.light(); }}
+                    className="flex-1 py-4 rounded-2xl font-black text-base uppercase tracking-wider transition-all"
+                    style={{
+                      background: side === s
+                        ? 'linear-gradient(135deg, #FFD700, #FF8C00)'
+                        : 'rgba(255,255,255,0.08)',
+                      color: side === s ? '#000' : 'rgba(255,255,255,0.6)',
+                      border: side === s ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                      boxShadow: side === s ? '0 4px 20px rgba(255,215,0,0.4)' : 'none',
+                    }}
+                  >
+                    {s === 'heads' ? '😎 Heads' : '💀 Tails'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Bet grid */}
+            <div className="flex flex-col items-center gap-3 w-full">
+              <div className="text-white/40 text-xs tracking-widest uppercase">Choose Bet</div>
+              <div className="grid grid-cols-3 gap-2 w-full max-w-xs">
+                {BET_OPTIONS.filter(b => b <= balance + 1).map(amount => (
+                  <button
+                    key={amount}
+                    onClick={() => { setBet(amount); haptic.light(); }}
+                    className="py-3 rounded-xl font-bold text-sm transition-all"
+                    style={{
+                      background: bet === amount
+                        ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                        : 'rgba(255,255,255,0.08)',
+                      color: bet === amount ? '#fff' : 'rgba(255,255,255,0.6)',
+                      border: bet === amount ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                      boxShadow: bet === amount ? '0 2px 12px rgba(34,197,94,0.35)' : 'none',
+                    }}
+                  >
+                    ${amount.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* BOTTOM BUTTON */}
+      <div className="px-6 pb-10 pt-4">
+        {gameState === 'betting' && (
+          <button
+            onClick={handleFlip}
+            disabled={balance < safeBet}
+            className="w-full py-4 rounded-2xl font-black text-lg text-white tracking-wider"
+            style={{
+              background: 'linear-gradient(135deg, #FFD700, #FF8C00)',
+              color: '#000',
+              boxShadow: '0 4px 30px rgba(255,165,0,0.5)',
+              opacity: balance < safeBet ? 0.5 : 1,
+            }}
+          >
+            FLIP — {formatCurrency(safeBet)}
+          </button>
+        )}
         {gameState === 'result' && (
           <button
             onClick={reset}
+            className="w-full py-4 rounded-2xl font-black text-lg"
             style={{
-              width: '100%',
-              padding: '16px',
-              borderRadius: 14,
-              background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-              border: 'none',
-              color: '#fff',
-              fontSize: 18,
-              fontWeight: 900,
-              cursor: 'pointer',
-              fontFamily: 'Inter, sans-serif',
-              boxShadow: '0 4px 24px rgba(99,102,241,0.4)',
+              background: 'rgba(255,255,255,0.1)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              color: 'white',
             }}
           >
-            🔄 Play Again
+            FLIP AGAIN
           </button>
         )}
       </div>

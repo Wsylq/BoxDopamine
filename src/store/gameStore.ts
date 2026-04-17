@@ -1,52 +1,27 @@
 // ============================================================
 // DOPAMINE BOX - Global Game Store
-// Manages currency, streaks, and all game state
 // ============================================================
 
-export const TARGET_AMOUNT = 10_000_000; // $10 million goal
+export const TARGET_AMOUNT = 10_000_000;
 
-// Haptic feedback helper - uses navigator.vibrate for Android-style haptics
 export const haptic = {
-  light: () => {
-    if (navigator.vibrate) navigator.vibrate(10);
-  },
-  medium: () => {
-    if (navigator.vibrate) navigator.vibrate(30);
-  },
-  heavy: () => {
-    if (navigator.vibrate) navigator.vibrate([50, 20, 50]);
-  },
-  success: () => {
-    if (navigator.vibrate) navigator.vibrate([30, 10, 30, 10, 60]);
-  },
-  error: () => {
-    if (navigator.vibrate) navigator.vibrate([80, 30, 80]);
-  },
-  coin: () => {
-    if (navigator.vibrate) navigator.vibrate([5, 5, 5]);
-  },
-  win: () => {
-    if (navigator.vibrate) navigator.vibrate([20, 10, 20, 10, 40, 10, 80]);
-  },
-  lose: () => {
-    if (navigator.vibrate) navigator.vibrate([100, 30, 100, 30, 100]);
-  },
-  jackpot: () => {
-    if (navigator.vibrate) navigator.vibrate([50, 20, 50, 20, 50, 20, 200]);
-  },
+  light: () => { if (navigator.vibrate) navigator.vibrate(10); },
+  medium: () => { if (navigator.vibrate) navigator.vibrate(30); },
+  heavy: () => { if (navigator.vibrate) navigator.vibrate([50, 20, 50]); },
+  success: () => { if (navigator.vibrate) navigator.vibrate([30, 10, 30, 10, 60]); },
+  error: () => { if (navigator.vibrate) navigator.vibrate([80, 30, 80]); },
+  coin: () => { if (navigator.vibrate) navigator.vibrate([5, 5, 5]); },
+  win: () => { if (navigator.vibrate) navigator.vibrate([20, 10, 20, 10, 40, 10, 80]); },
+  lose: () => { if (navigator.vibrate) navigator.vibrate([100, 30, 100, 30, 100]); },
+  jackpot: () => { if (navigator.vibrate) navigator.vibrate([50, 20, 50, 20, 50, 20, 200]); },
 };
 
-// Sound effects using Web Audio API
 class SoundEngine {
   private ctx: AudioContext | null = null;
 
   private getCtx(): AudioContext {
-    if (!this.ctx) {
-      this.ctx = new AudioContext();
-    }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
+    if (!this.ctx) this.ctx = new AudioContext();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
     return this.ctx;
   }
 
@@ -90,17 +65,9 @@ class SoundEngine {
     });
   }
 
-  playFlap() {
-    this.playTone(440, 0.05, 'square', 0.15);
-  }
-
-  playClick() {
-    this.playTone(800, 0.03, 'sine', 0.2);
-  }
-
-  playPlinko() {
-    this.playTone(600 + Math.random() * 400, 0.06, 'sine', 0.25);
-  }
+  playFlap() { this.playTone(440, 0.05, 'square', 0.15); }
+  playClick() { this.playTone(800, 0.03, 'sine', 0.2); }
+  playPlinko() { this.playTone(600 + Math.random() * 400, 0.06, 'sine', 0.25); }
 
   playWoohoo() {
     const notes = [392, 440, 494, 523, 587, 659, 784, 880, 1047];
@@ -127,14 +94,12 @@ class SoundEngine {
 
 export const sound = new SoundEngine();
 
-// Format currency
 export const formatCurrency = (amount: number): string => {
   if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(2)}M`;
   if (amount >= 1_000) return `$${(amount / 1_000).toFixed(1)}K`;
   return `$${amount.toFixed(0)}`;
 };
 
-// Local storage keys
 const STORAGE_KEYS = {
   balance: 'db_balance',
   streak: 'db_streak',
@@ -147,15 +112,14 @@ export const loadFromStorage = () => {
   const today = new Date().toDateString();
   const lastPlayed = localStorage.getItem(STORAGE_KEYS.lastPlayed) || '';
   const storedStreak = parseInt(localStorage.getItem(STORAGE_KEYS.streak) || '1', 10);
-  
-  // Calculate streak
+
   let streak = storedStreak;
   if (lastPlayed) {
     const lastDate = new Date(lastPlayed);
     const todayDate = new Date();
     const diffDays = Math.floor((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays > 1) streak = 1; // Broke streak
-    else if (diffDays === 1) streak = storedStreak + 1; // Extend streak
+    if (diffDays > 1) streak = 1;
+    else if (diffDays === 1) streak = storedStreak + 1;
   }
 
   return {
