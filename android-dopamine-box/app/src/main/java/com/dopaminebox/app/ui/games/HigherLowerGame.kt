@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -114,8 +113,8 @@ fun HigherLowerGame(
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            GradientButton("HIGHER ⬆", true, Modifier.weight(1f)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            GradientButton("HIGHER ⬆", true, Modifier.fillMaxWidth()) {
                 playRound(
                     wantsHigher = true,
                     current = currentCard,
@@ -135,7 +134,7 @@ fun HigherLowerGame(
                     },
                 )
             }
-            GradientButton("LOWER ⬇", false, Modifier.weight(1f)) {
+            GradientButton("LOWER ⬇", false, Modifier.fillMaxWidth()) {
                 playRound(
                     wantsHigher = false,
                     current = currentCard,

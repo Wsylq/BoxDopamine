@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
@@ -153,8 +152,8 @@ fun CoinFlipGame(
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            GradientActionButton(label = "HEADS 🪙", isPrimary = true, modifier = Modifier.weight(1f)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            GradientActionButton(label = "HEADS 🪙", isPrimary = true, modifier = Modifier.fillMaxWidth()) {
                 selected = "H"
                 scope.launch {
                     val won = doFlip(rotation, speedMultiplier)
@@ -172,7 +171,7 @@ fun CoinFlipGame(
                     }
                 }
             }
-            GradientActionButton(label = "TAILS 🌙", isPrimary = false, modifier = Modifier.weight(1f)) {
+            GradientActionButton(label = "TAILS 🌙", isPrimary = false, modifier = Modifier.fillMaxWidth()) {
                 selected = "T"
                 scope.launch {
                     val won = doFlip(rotation, speedMultiplier)
