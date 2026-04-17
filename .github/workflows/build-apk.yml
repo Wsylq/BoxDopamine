@@ -82,18 +82,18 @@ jobs:
         run: |
           if [ ! -f "capacitor.config.json" ] && [ ! -f "capacitor.config.ts" ]; then
             cat > capacitor.config.json << 'EOF'
-        {
-          "appId": "com.dopaminebox.app",
-          "appName": "Dopamine Box",
-          "webDir": "dist",
-          "server": {
-            "androidScheme": "https"
-          },
-          "android": {
-            "allowMixedContent": true
+          {
+            "appId": "com.dopaminebox.app",
+            "appName": "Dopamine Box",
+            "webDir": "dist",
+            "server": {
+              "androidScheme": "https"
+            },
+            "android": {
+              "allowMixedContent": true
+            }
           }
-        }
-        EOF
+          EOF
           fi
 
       - name: Add Android platform
@@ -111,27 +111,22 @@ jobs:
       - name: Fix Kotlin version conflict
         working-directory: android
         run: |
-          cat >> gradle.properties << 'EOF'
-          kotlin.version=1.8.22
-          android.useAndroidX=true
-          android.enableJetifier=true
-          org.gradle.jvmargs=-Xmx2048m
-          EOF
-          
+          printf '\nkotlin.version=1.8.22\nandroid.useAndroidX=true\nandroid.enableJetifier=true\norg.gradle.jvmargs=-Xmx2048m\n' >> gradle.properties
+
           if ! grep -q "resolutionStrategy" build.gradle; then
-            cat >> build.gradle << 'EOF'
-          
-          subprojects {
-              configurations.all {
-                  resolutionStrategy {
-                      force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
-                      force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22"
-                      force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
-                      force "org.jetbrains.kotlin:kotlin-stdlib-common:1.8.22"
-                  }
-              }
-          }
-          EOF
+            cat >> build.gradle << 'BUILDEOF'
+
+subprojects {
+    configurations.all {
+        resolutionStrategy {
+            force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
+            force "org.jetbrains.kotlin:kotlin-stdlib-common:1.8.22"
+        }
+    }
+}
+BUILDEOF
           fi
 
       - name: Make gradlew executable
