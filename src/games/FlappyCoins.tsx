@@ -1,376 +1,395 @@
-// ============================================================
-// DOPAMINE BOX - Flappy Coins
-// Flappy Bird clone with coin rewards
-// Matching the UI from screenshots
-// ============================================================
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { haptic, sound, formatCurrency } from '../store/gameStore';
+import { addBalance, formatCurrency, getState, sounds, haptics } from '../store/gameStore';
 
-const CANVAS_W = 320;
-const CANVAS_H = 500;
+const W = 320;
+const H = 460;
 const BIRD_X = 70;
-const BIRD_RADIUS = 11;
+const BIRD_R = 16;
 const GRAVITY = 0.45;
-const FLAP_POWER = -7.5;
-const PIPE_WIDTH = 52;
-const PIPE_GAP = 145;
-const PIPE_SPEED = 2.8;
-const COIN_SIZE = 18;
+const FLAP_V = -8;
+const PIPE_GAP = 130;
+const PIPE_W = 52;
+const PIPE_SPEED = 2.6;
+const COIN_R = 12;
+const REWARD_PER_COIN = 5;
 
 interface Pipe {
-  x: number; topH: number; passed: boolean;
-  hasCoin: boolean; coinY: number; coinCollected: boolean;
+  x: number;
+  topH: number;
+  passed: boolean;
+  coinY?: number;
+  coinCollected?: boolean;
 }
 
-interface GameState {
-  birdY: number; birdVY: number; pipes: Pipe[];
-  coins: number; frame: number; alive: boolean; started: boolean; bestScore: number;
-}
+type Phase = 'idle' | 'playing' | 'dead';
 
-interface FlappyCoinsProps {
-  balance: number;
-  onResult: (delta: number, won: boolean) => void;
-  onClose: () => void;
-}
-
-const FlappyCoins: React.FC<FlappyCoinsProps> = ({ balance, onResult, onClose }) => {
+export default function FlappyCoins() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const stateRef = useRef<GameState>({
-    birdY: CANVAS_H / 2, birdVY: 0, pipes: [], coins: 0, frame: 0,
-    alive: false, started: false, bestScore: parseInt(localStorage.getItem('flappy_best') || '0'),
+  const stateRef = useRef({
+    birdY: H / 2,
+    birdV: 0,
+    pipes: [] as Pipe[],
+    coins: 0,
+    score: 0,
+    frame: 0,
   });
-  const animRef = useRef(0);
-  const [displayState, setDisplayState] = useState<'idle' | 'playing' | 'dead'>('idle');
-  const [displayCoins, setDisplayCoins] = useState(0);
-  const [displayBest, setDisplayBest] = useState(parseInt(localStorage.getItem('flappy_best') || '0'));
-  const [woohoo, setWoohoo] = useState(false);
-  const [rewardAmount, setRewardAmount] = useState(0);
-  const [deathScore, setDeathScore] = useState(0);
+  const animRef = useRef<number>(0);
+  const phaseRef = useRef<Phase>('idle');
 
-  const REWARD_PER_COIN = Math.max(10, Math.floor(balance * 0.01));
-  const MULTIPLIER = 1.5;
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [score, setScore] = useState(0);
+  const [coins, setCoins] = useState(0);
+  const [highScore, setHighScore] = useState(() => {
+    try { return parseInt(localStorage.getItem('flappy_hs') || '0'); } catch { return 0; }
+  });
+  const [showWoohoo, setShowWoohoo] = useState(false);
+  const woohooRef = useRef(false);
 
-  const spawnPipe = (x: number): Pipe => {
-    const topH = 70 + Math.random() * (CANVAS_H - PIPE_GAP - 140);
+  const { balance } = getState();
+
+  function spawnPipe(): Pipe {
+    const topH = 60 + Math.random() * (H - PIPE_GAP - 120);
     const coinY = topH + PIPE_GAP / 2;
-    return { x, topH, passed: false, hasCoin: true, coinY, coinCollected: false };
-  };
+    return { x: W + 20, topH, passed: false, coinY, coinCollected: false };
+  }
 
-  const resetGame = () => {
-    stateRef.current = {
-      birdY: CANVAS_H / 2, birdVY: 0,
-      pipes: [spawnPipe(CANVAS_W + 100)],
-      coins: 0, frame: 0, alive: true, started: true,
-      bestScore: stateRef.current.bestScore,
-    };
-    setDisplayCoins(0);
-    setDisplayState('playing');
-    setWoohoo(false);
-    setDeathScore(0);
-  };
-
-  const flap = useCallback(() => {
-    const state = stateRef.current;
-    if (!state.alive) { resetGame(); return; }
-    state.birdVY = FLAP_POWER;
-    haptic.light();
-    sound.playFlap();
-  }, []);
-
-  const draw = useCallback((ctx: CanvasRenderingContext2D, state: GameState) => {
-    // Deep dark background
-    ctx.fillStyle = '#050508';
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-    // Stars
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    for (let i = 0; i < 25; i++) {
-      const sx = ((i * 137 + state.frame * 0.15) % CANVAS_W);
-      const sy = (i * 79) % (CANVAS_H - 30);
-      ctx.fillRect(sx, sy, 1.5, 1.5);
-    }
-
-    // Ground
-    ctx.fillStyle = '#1a2e0a';
-    ctx.fillRect(0, CANVAS_H - 20, CANVAS_W, 20);
-    ctx.fillStyle = '#2d5016';
-    ctx.fillRect(0, CANVAS_H - 20, CANVAS_W, 4);
-
-    // Pipes
-    for (const pipe of state.pipes) {
-      const pipeGrad = ctx.createLinearGradient(pipe.x, 0, pipe.x + PIPE_WIDTH, 0);
-      pipeGrad.addColorStop(0, '#1fa01f');
-      pipeGrad.addColorStop(0.4, '#2dde2d');
-      pipeGrad.addColorStop(1, '#167016');
-      ctx.fillStyle = pipeGrad;
-
-      // Top pipe
-      ctx.beginPath();
-      ctx.roundRect(pipe.x, 0, PIPE_WIDTH, pipe.topH, [0, 0, 6, 6]);
-      ctx.fill();
-      // Top pipe cap
-      ctx.fillRect(pipe.x - 5, pipe.topH - 22, PIPE_WIDTH + 10, 22);
-
-      // Bottom pipe
-      const botY = pipe.topH + PIPE_GAP;
-      ctx.beginPath();
-      ctx.roundRect(pipe.x, botY + 22, PIPE_WIDTH, CANVAS_H - botY - 42, [6, 6, 0, 0]);
-      ctx.fill();
-      // Bottom pipe cap
-      ctx.fillRect(pipe.x - 5, botY, PIPE_WIDTH + 10, 22);
-
-      // Coin
-      if (pipe.hasCoin && !pipe.coinCollected) {
-        ctx.save();
-        ctx.translate(pipe.x + PIPE_WIDTH / 2, pipe.coinY);
-        const spinAngle = (state.frame * 4) % 360;
-        ctx.scale(Math.cos((spinAngle * Math.PI) / 180), 1);
-        const coinGrad = ctx.createRadialGradient(-2, -2, 1, 0, 0, COIN_SIZE / 2);
-        coinGrad.addColorStop(0, '#FFE066');
-        coinGrad.addColorStop(1, '#CC8800');
-        ctx.fillStyle = coinGrad;
-        ctx.beginPath();
-        ctx.arc(0, 0, COIN_SIZE / 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#7a5c00';
-        ctx.font = 'bold 9px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('$', 0, 0);
-        ctx.restore();
-      }
-    }
-
-    // Bird
-    ctx.save();
-    ctx.translate(BIRD_X, state.birdY);
-    ctx.rotate(Math.min(Math.max(state.birdVY * 0.05, -0.5), 0.8));
-
-    // Body
-    const bodyGrad = ctx.createRadialGradient(-2, -2, 1, 0, 0, BIRD_RADIUS);
-    bodyGrad.addColorStop(0, '#FFE066');
-    bodyGrad.addColorStop(1, '#CC8800');
-    ctx.fillStyle = bodyGrad;
-    ctx.beginPath();
-    ctx.arc(0, 0, BIRD_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eye white
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.arc(5, -4, 5, 0, Math.PI * 2);
-    ctx.fill();
-    // Pupil
-    ctx.fillStyle = '#111';
-    ctx.beginPath();
-    ctx.arc(7, -4, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-    // Beak
-    ctx.fillStyle = '#FF6B00';
-    ctx.beginPath();
-    ctx.moveTo(12, -1);
-    ctx.lineTo(20, 1);
-    ctx.lineTo(12, 4);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.restore();
-
-    // Score in center top
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 20px -apple-system, Arial';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 6;
-    ctx.fillText(`${state.coins}`, CANVAS_W / 2, 38);
-    ctx.shadowBlur = 0;
-  }, []);
-
-  const gameLoop = useCallback(() => {
-    const state = stateRef.current;
+  const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const s = stateRef.current;
 
-    if (state.alive && state.started) {
-      state.birdVY += GRAVITY;
-      state.birdY += state.birdVY;
-      state.frame++;
+    ctx.clearRect(0, 0, W, H);
 
-      const lastPipe = state.pipes[state.pipes.length - 1];
-      if (!lastPipe || lastPipe.x < CANVAS_W - 190) {
-        state.pipes.push(spawnPipe(CANVAS_W + PIPE_WIDTH));
+    // Background
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0a0a1a');
+    grad.addColorStop(1, '#0d1b2a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    if (phaseRef.current === 'idle') {
+      // Idle screen
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = 'bold 18px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('Tap to Start!', W / 2, H / 2);
+      ctx.font = '14px system-ui';
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillText('Collect coins, avoid pipes', W / 2, H / 2 + 28);
+
+      // Draw idle bird
+      drawBird(ctx, BIRD_X, H / 2, 0);
+      return;
+    }
+
+    // Pipes
+    for (const pipe of s.pipes) {
+      // Top pipe
+      const pipeGrad = ctx.createLinearGradient(pipe.x, 0, pipe.x + PIPE_W, 0);
+      pipeGrad.addColorStop(0, '#2d6a4f');
+      pipeGrad.addColorStop(0.5, '#40916c');
+      pipeGrad.addColorStop(1, '#1b4332');
+      ctx.fillStyle = pipeGrad;
+      ctx.beginPath();
+      ctx.roundRect(pipe.x, 0, PIPE_W, pipe.topH, [0, 0, 8, 8]);
+      ctx.fill();
+      ctx.fillRect(pipe.x - 4, pipe.topH - 20, PIPE_W + 8, 20);
+
+      // Bottom pipe
+      const botY = pipe.topH + PIPE_GAP;
+      ctx.fillStyle = pipeGrad;
+      ctx.beginPath();
+      ctx.roundRect(pipe.x, botY, PIPE_W, H - botY, [8, 8, 0, 0]);
+      ctx.fill();
+      ctx.fillRect(pipe.x - 4, botY, PIPE_W + 8, 20);
+
+      // Coin in gap
+      if (!pipe.coinCollected && pipe.coinY !== undefined) {
+        const cx = pipe.x + PIPE_W / 2;
+        const cy = pipe.coinY;
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, COIN_R);
+        glow.addColorStop(0, '#FFD700');
+        glow.addColorStop(0.6, '#FFA500');
+        glow.addColorStop(1, 'rgba(255,165,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(cx, cy, COIN_R + 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.arc(cx, cy, COIN_R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#FFF8DC';
+        ctx.font = 'bold 12px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('$', cx, cy + 4);
+      }
+    }
+
+    // Bird
+    const tilt = Math.max(-30, Math.min(45, s.birdV * 3));
+    drawBird(ctx, BIRD_X, s.birdY, tilt);
+
+    // Score
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${s.score}`, W / 2, 40);
+
+    // Coins
+    ctx.font = 'bold 14px system-ui';
+    ctx.fillStyle = '#FFD700';
+    ctx.textAlign = 'left';
+    ctx.fillText(`🪙 ${s.coins} × $${REWARD_PER_COIN}`, 12, 40);
+
+  }, []);
+
+  function drawBird(ctx: CanvasRenderingContext2D, x: number, y: number, tilt: number) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate((tilt * Math.PI) / 180);
+
+    // Body
+    const bodyGrad = ctx.createRadialGradient(-2, -2, 2, 0, 0, BIRD_R);
+    bodyGrad.addColorStop(0, '#FFE066');
+    bodyGrad.addColorStop(1, '#FF8C00');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, BIRD_R, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wing
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(-4, 4, 8, 5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(6, -4, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.arc(7, -4, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak
+    ctx.fillStyle = '#FF6B35';
+    ctx.beginPath();
+    ctx.moveTo(13, -1);
+    ctx.lineTo(20, 1);
+    ctx.lineTo(13, 3);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  const gameLoop = useCallback(() => {
+    if (phaseRef.current !== 'playing') return;
+    const s = stateRef.current;
+    s.frame++;
+
+    // Bird physics
+    s.birdV += GRAVITY;
+    s.birdY += s.birdV;
+
+    // Spawn pipes
+    if (s.frame % 90 === 0) {
+      s.pipes.push(spawnPipe());
+    }
+
+    // Move pipes
+    for (const pipe of s.pipes) {
+      pipe.x -= PIPE_SPEED;
+    }
+    s.pipes = s.pipes.filter(p => p.x > -PIPE_W - 20);
+
+    // Collision & score
+    let dead = false;
+    if (s.birdY - BIRD_R <= 0 || s.birdY + BIRD_R >= H) {
+      dead = true;
+    }
+
+    for (const pipe of s.pipes) {
+      // Score
+      if (!pipe.passed && pipe.x + PIPE_W < BIRD_X) {
+        pipe.passed = true;
+        s.score++;
+        setScore(s.score);
+        sounds.coin();
       }
 
-      for (const pipe of state.pipes) {
-        pipe.x -= PIPE_SPEED;
-        if (!pipe.passed && pipe.x + PIPE_WIDTH < BIRD_X - BIRD_RADIUS) pipe.passed = true;
-        if (pipe.hasCoin && !pipe.coinCollected) {
-          const dx = Math.abs(BIRD_X - (pipe.x + PIPE_WIDTH / 2));
-          const dy = Math.abs(state.birdY - pipe.coinY);
-          if (dx < BIRD_RADIUS + COIN_SIZE / 2 && dy < BIRD_RADIUS + COIN_SIZE / 2) {
-            pipe.coinCollected = true;
-            state.coins++;
-            setDisplayCoins(state.coins);
-            haptic.coin();
-            sound.playCoin();
+      // Coin collect
+      if (!pipe.coinCollected && pipe.coinY !== undefined) {
+        const cx = pipe.x + PIPE_W / 2;
+        const cy = pipe.coinY;
+        const dx = BIRD_X - cx;
+        const dy = s.birdY - cy;
+        if (Math.sqrt(dx * dx + dy * dy) < BIRD_R + COIN_R) {
+          pipe.coinCollected = true;
+          s.coins++;
+          setCoins(s.coins);
+          addBalance(REWARD_PER_COIN);
+          sounds.coin();
+          haptics.light();
+
+          // Woohoo at 5 coins
+          if (s.coins >= 5 && !woohooRef.current) {
+            woohooRef.current = true;
+            setShowWoohoo(true);
+            sounds.woohoo();
+            haptics.win();
+            setTimeout(() => setShowWoohoo(false), 1500);
           }
         }
-        const inPipeX = BIRD_X + BIRD_RADIUS > pipe.x && BIRD_X - BIRD_RADIUS < pipe.x + PIPE_WIDTH;
-        const inTop = state.birdY - BIRD_RADIUS < pipe.topH;
-        const inBot = state.birdY + BIRD_RADIUS > pipe.topH + PIPE_GAP;
-        if (inPipeX && (inTop || inBot)) state.alive = false;
       }
 
-      state.pipes = state.pipes.filter(p => p.x > -PIPE_WIDTH - 20);
-
-      if (state.birdY + BIRD_RADIUS > CANVAS_H - 20 || state.birdY - BIRD_RADIUS < 0) {
-        state.alive = false;
-      }
-
-      if (!state.alive) {
-        haptic.lose();
-        sound.playLose();
-        const earned = Math.floor(state.coins * REWARD_PER_COIN * MULTIPLIER);
-        const won = state.coins >= 3;
-        if (state.coins > state.bestScore) {
-          state.bestScore = state.coins;
-          localStorage.setItem('flappy_best', state.coins.toString());
-          setDisplayBest(state.coins);
+      // Pipe collision
+      if (
+        BIRD_X + BIRD_R > pipe.x &&
+        BIRD_X - BIRD_R < pipe.x + PIPE_W
+      ) {
+        if (s.birdY - BIRD_R < pipe.topH || s.birdY + BIRD_R > pipe.topH + PIPE_GAP) {
+          dead = true;
         }
-        if (state.coins >= 5) {
-          setWoohoo(true);
-          sound.playWoohoo();
-          haptic.jackpot();
-          setTimeout(() => setWoohoo(false), 3000);
-        }
-        setDeathScore(state.coins);
-        setRewardAmount(earned);
-        if (earned > 0) onResult(earned, won);
-        setDisplayState('dead');
       }
     }
 
-    draw(ctx, state);
+    if (dead) {
+      phaseRef.current = 'dead';
+      setPhase('dead');
+      sounds.lose();
+      haptics.lose();
 
-    if (state.alive || !state.started) {
-      animRef.current = requestAnimationFrame(gameLoop);
+      const finalScore = s.score;
+      setScore(finalScore);
+      setCoins(s.coins);
+      if (finalScore > highScore) {
+        setHighScore(finalScore);
+        try { localStorage.setItem('flappy_hs', String(finalScore)); } catch {}
+      }
+      return;
     }
-  }, [draw, REWARD_PER_COIN, onResult]);
+
+    draw();
+    animRef.current = requestAnimationFrame(gameLoop);
+  }, [draw, highScore]);
+
+  function flap() {
+    if (phaseRef.current === 'idle') {
+      startGame();
+      return;
+    }
+    if (phaseRef.current === 'dead') return;
+    stateRef.current.birdV = FLAP_V;
+    sounds.swoosh();
+    haptics.light();
+  }
+
+  function startGame() {
+    stateRef.current = {
+      birdY: H / 2,
+      birdV: -4,
+      pipes: [],
+      coins: 0,
+      score: 0,
+      frame: 0,
+    };
+    woohooRef.current = false;
+    setScore(0);
+    setCoins(0);
+    setShowWoohoo(false);
+    phaseRef.current = 'playing';
+    setPhase('playing');
+    cancelAnimationFrame(animRef.current);
+    animRef.current = requestAnimationFrame(gameLoop);
+    haptics.medium();
+  }
+
+  function restart() {
+    startGame();
+  }
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) { canvas.width = CANVAS_W; canvas.height = CANVAS_H; }
-    stateRef.current.started = false;
-    stateRef.current.alive = false;
-    animRef.current = requestAnimationFrame(gameLoop);
+    draw();
     return () => cancelAnimationFrame(animRef.current);
-  }, [gameLoop]);
+  }, [draw]);
 
-  const handleTap = () => {
-    if (displayState === 'idle' || displayState === 'dead') {
-      resetGame();
-      cancelAnimationFrame(animRef.current);
-      animRef.current = requestAnimationFrame(gameLoop);
-    } else {
-      flap();
-    }
-  };
+  useEffect(() => {
+    if (phase === 'idle') draw();
+  }, [phase, draw]);
 
   return (
-    <div className="flex flex-col h-full bg-black text-white select-none">
-      {/* TOP BAR */}
-      <div className="flex items-center justify-between px-5 pt-14 pb-1">
-        <div className="flex items-center gap-2">
-          <span className="text-yellow-400 text-xs font-bold">🪙 {displayCoins}</span>
-        </div>
-        <div className="text-green-400 font-bold text-sm">${balance.toFixed(0)}</div>
-        <div className="flex items-center gap-2">
-          <span className="text-white/50 text-xs">🏆 {displayBest}</span>
-          <button onClick={onClose} className="text-white/50 text-2xl leading-none ml-2">×</button>
-        </div>
-      </div>
+    <div className="flex flex-col items-center gap-4 px-4 py-4 h-full">
+      <div className="relative cursor-pointer select-none" onPointerDown={flap}>
+        <canvas
+          ref={canvasRef}
+          width={W}
+          height={H}
+          style={{
+            borderRadius: 20,
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            touchAction: 'none',
+          }}
+        />
 
-      {/* CANVAS AREA */}
-      <div
-        className="flex-1 relative overflow-hidden"
-        onClick={handleTap}
-        onTouchStart={e => { e.preventDefault(); handleTap(); }}
-        style={{ touchAction: 'none', cursor: 'pointer' }}
-      >
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
-
-        {/* IDLE OVERLAY */}
-        {displayState === 'idle' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-            <div className="text-6xl">🐦</div>
-            <div className="font-black text-2xl text-white tracking-wider">FLAPPY COINS</div>
-            <div className="text-yellow-400 text-sm font-semibold">
-              +{formatCurrency(Math.floor(REWARD_PER_COIN * MULTIPLIER))} per coin!
-            </div>
-            <div
-              className="px-8 py-3 rounded-2xl font-black text-base text-black mt-2"
-              style={{ background: 'linear-gradient(135deg, #FFD700, #FF8C00)' }}
-            >
-              TAP TO START!
-            </div>
-          </div>
-        )}
-
-        {/* DEAD OVERLAY — matches screenshot: NICE / SCORE / +COINS */}
+        {/* Woohoo overlay */}
         <AnimatePresence>
-          {displayState === 'dead' && (
+          {showWoohoo && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-              style={{ background: 'rgba(0,0,0,0.65)' }}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 1.5, opacity: 0 }}
+              className="absolute inset-0 flex items-center justify-center pointer-events-none"
             >
-              {woohoo ? (
-                <div
-                  className="font-black text-5xl tracking-wider"
-                  style={{
-                    background: 'linear-gradient(135deg, #22c55e, #60a5fa)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  NICE
-                </div>
-              ) : (
-                <div className="text-white font-black text-4xl">
-                  {deathScore === 0 ? 'OOPS!' : deathScore < 3 ? 'SO CLOSE!' : 'NICE'}
-                </div>
-              )}
-              <div className="text-white/70 font-bold text-base tracking-widest">
-                SCORE: {deathScore}
-              </div>
-              <div className="text-yellow-400 font-black text-2xl">
-                +{rewardAmount} COINS
-              </div>
               <div
-                className="mt-4 px-8 py-3 rounded-2xl text-sm font-bold text-white/60"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}
+                className="text-4xl font-black text-yellow-400"
+                style={{ textShadow: '0 0 30px rgba(255,215,0,0.8)' }}
               >
-                TAP TO PLAY AGAIN
+                WOOHOO! 🎉
               </div>
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Dead overlay */}
+        {phase === 'dead' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3"
+            style={{ background: 'rgba(0,0,0,0.7)', borderRadius: 20 }}>
+            <div className="text-4xl font-black text-red-400">💀 DEAD</div>
+            <div className="text-white text-lg font-bold">Score: {score}</div>
+            <div className="text-yellow-400 text-base font-semibold">🪙 {coins} coins = {formatCurrency(coins * REWARD_PER_COIN)}</div>
+            {score >= highScore && score > 0 && (
+              <div className="text-green-400 text-sm font-bold">🏆 New High Score!</div>
+            )}
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={restart}
+              className="mt-2 px-8 py-3 rounded-2xl text-lg font-black text-black"
+              style={{
+                background: 'linear-gradient(135deg,#FFD700,#FF8C00)',
+                boxShadow: '0 4px 20px rgba(255,215,0,0.4)',
+              }}
+            >
+              🐦 Play Again
+            </motion.button>
+          </div>
+        )}
       </div>
 
-      {/* MULTIPLIER FOOTER */}
-      <div
-        className="flex items-center justify-center gap-2 py-3"
-        style={{ background: 'rgba(255,255,255,0.04)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
-      >
-        <span className="text-yellow-400 text-xs">⚡</span>
-        <span className="text-yellow-400 text-xs font-bold tracking-wider">{MULTIPLIER}X MULTIPLIER</span>
+      <div className="flex gap-4 text-sm text-white/40">
+        <span>🏆 Best: <span className="text-white font-bold">{highScore}</span></span>
+        <span>💰 Balance: <span className="text-yellow-400 font-bold">{formatCurrency(balance)}</span></span>
       </div>
+      {phase === 'idle' && (
+        <div className="text-white/30 text-xs text-center">Each coin = {formatCurrency(REWARD_PER_COIN)} added to balance</div>
+      )}
     </div>
   );
-};
-
-export default FlappyCoins;
+}

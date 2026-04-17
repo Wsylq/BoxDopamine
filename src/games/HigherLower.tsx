@@ -1,399 +1,341 @@
-// ============================================================
-// DOPAMINE BOX - Higher or Lower
-// Card guessing game with multipliers
-// ============================================================
-import React, { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { haptic, sound, formatCurrency } from '../store/gameStore';
+import { addBalance, formatCurrency, getState, sounds, haptics } from '../store/gameStore';
 
-type Suit = '♠' | '♥' | '♦' | '♣';
-interface Card { value: number; suit: Suit; label: string; }
-type GameState = 'betting' | 'playing' | 'result';
+const SUITS = ['♠', '♥', '♦', '♣'];
+const VALUES = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 
-const BET_OPTIONS = [10, 25, 50, 100, 250, 500, 1000, 2500];
-const SUITS: Suit[] = ['♠', '♥', '♦', '♣'];
-const LABELS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-
-const drawCard = (): Card => {
-  const value = Math.floor(Math.random() * 13) + 2;
-  const suit = SUITS[Math.floor(Math.random() * 4)];
-  return { value, suit, label: LABELS[value - 2] };
-};
-
-const isRed = (suit: Suit) => suit === '♥' || suit === '♦';
-
-interface HigherLowerProps {
-  balance: number;
-  onResult: (delta: number, won: boolean) => void;
-  onClose: () => void;
+function randomCard() {
+  return {
+    suit: SUITS[Math.floor(Math.random() * 4)],
+    value: VALUES[Math.floor(Math.random() * 13)],
+    num: Math.floor(Math.random() * 13),
+  };
 }
 
-const CardFace: React.FC<{ card: Card; faceDown?: boolean }> = ({ card, faceDown }) => (
-  <div
-    className="relative rounded-2xl flex items-center justify-center"
-    style={{
-      width: 140, height: 200,
-      background: faceDown
-        ? 'linear-gradient(135deg, #1a1a2e, #16213e)'
-        : 'linear-gradient(145deg, #f0e8ff, #e8d5ff)',
-      border: faceDown ? '2px solid rgba(255,255,255,0.1)' : '2px solid rgba(255,255,255,0.8)',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-    }}
-  >
-    {faceDown ? (
-      <div className="text-4xl opacity-30">🂠</div>
-    ) : (
-      <>
-        <div
-          className="absolute top-3 left-4 text-left leading-tight"
-          style={{ color: isRed(card.suit) ? '#cc0000' : '#1a1a1a', fontWeight: 900, fontSize: 18 }}
-        >
-          <div>{card.label}</div>
-          <div>{card.suit}</div>
-        </div>
-        <div
-          className="text-6xl font-black"
-          style={{ color: isRed(card.suit) ? '#cc0000' : '#1a1a1a' }}
-        >
-          {card.suit}
-        </div>
-        <div
-          className="absolute bottom-3 right-4 text-right leading-tight rotate-180"
-          style={{ color: isRed(card.suit) ? '#cc0000' : '#1a1a1a', fontWeight: 900, fontSize: 18 }}
-        >
-          <div>{card.label}</div>
-          <div>{card.suit}</div>
-        </div>
-      </>
-    )}
-  </div>
-);
+const BETS = [10, 25, 50, 100, 250, 500];
+const MULTIPLIERS = [2, 4, 8, 16, 32, 64];
 
-const HigherLower: React.FC<HigherLowerProps> = ({ balance, onResult, onClose }) => {
-  const [bet, setBet] = useState(25);
-  const [gameState, setGameState] = useState<GameState>('betting');
-  const [currentCard, setCurrentCard] = useState<Card>(drawCard());
-  const [nextCard, setNextCard] = useState<Card | null>(null);
-  const [multiplier, setMultiplier] = useState(1.0);
+type Phase = 'idle' | 'playing' | 'cashed' | 'lost';
+
+export default function HigherLower() {
+  const [bet, setBet] = useState(50);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [currentCard, setCurrentCard] = useState(randomCard());
+  const [nextCard, setNextCard] = useState<typeof currentCard | null>(null);
   const [streak, setStreak] = useState(0);
-  const [won, setWon] = useState<boolean | null>(null);
-  const [guessResult, setGuessResult] = useState<'correct' | 'wrong' | null>(null);
-  const [correctCount, setCorrectCount] = useState(0);
-  const [isRevealing, setIsRevealing] = useState(false);
+  const [pot, setPot] = useState(0);
+  const [showNext, setShowNext] = useState(false);
 
-  const safeBet = Math.min(bet, balance);
+  const { balance } = getState();
+  const currentPot = streak === 0 ? Math.min(bet, balance) : pot;
 
-  const startGame = () => {
-    setCurrentCard(drawCard());
-    setNextCard(null);
-    setMultiplier(1.0);
+  function startGame() {
+    const realBet = Math.min(bet, balance);
+    addBalance(-realBet);
+    setPot(realBet);
     setStreak(0);
-    setGameState('playing');
-    setWon(null);
-    setGuessResult(null);
-    setCorrectCount(0);
-    setIsRevealing(false);
-    haptic.medium();
-    sound.playCardFlip();
-  };
+    setCurrentCard(randomCard());
+    setNextCard(null);
+    setShowNext(false);
+    setPhase('playing');
+    sounds.click();
+    haptics.medium();
+  }
 
-  const guess = useCallback((higher: boolean) => {
-    if (isRevealing) return;
-    setIsRevealing(true);
-    const next = drawCard();
-    const correct = higher ? next.value > currentCard.value : next.value < currentCard.value;
-    const actualCorrect = next.value !== currentCard.value && correct;
-
+  function guess(dir: 'higher' | 'lower') {
+    if (phase !== 'playing') return;
+    const next = randomCard();
     setNextCard(next);
-    sound.playCardFlip();
-    haptic.medium();
+    setShowNext(true);
+    haptics.medium();
+    sounds.flip();
 
     setTimeout(() => {
-      if (actualCorrect) {
+      const correct =
+        dir === 'higher' ? next.num >= currentCard.num : next.num <= currentCard.num;
+
+      if (correct) {
         const newStreak = streak + 1;
-        const newMultiplier = parseFloat((multiplier + 0.5).toFixed(1));
-        const newCorrect = correctCount + 1;
-        setMultiplier(newMultiplier);
+        const newPot = currentPot * 2;
         setStreak(newStreak);
-        setCorrectCount(newCorrect);
-        setGuessResult('correct');
-        haptic.win();
-        sound.playHigherLower(true);
-        setTimeout(() => {
-          setCurrentCard(next);
-          setNextCard(null);
-          setGuessResult(null);
-          setIsRevealing(false);
-        }, 900);
+        setPot(newPot);
+        setCurrentCard(next);
+        setNextCard(null);
+        setShowNext(false);
+        sounds.win();
+        haptics.win();
       } else {
-        setGuessResult('wrong');
-        haptic.lose();
-        sound.playHigherLower(false);
-        setTimeout(() => {
-          setWon(false);
-          setGameState('result');
-          onResult(-safeBet, false);
-        }, 1200);
+        setPhase('lost');
+        sounds.lose();
+        haptics.lose();
       }
-    }, 500);
-  }, [currentCard, multiplier, streak, safeBet, onResult, isRevealing, correctCount]);
+    }, 800);
+  }
 
-  const cashOut = () => {
-    if (streak === 0) return;
-    haptic.success();
-    sound.playWin();
-    const winAmount = Math.floor(safeBet * multiplier) - safeBet;
-    onResult(winAmount, true);
-    setWon(true);
-    setGameState('result');
-  };
+  function cashOut() {
+    if (phase !== 'playing' || streak === 0) return;
+    addBalance(currentPot);
+    setPhase('cashed');
+    sounds.bigWin();
+    haptics.win();
+  }
 
-  const reset = () => {
-    setGameState('betting');
-    setCurrentCard(drawCard());
+  function reset() {
+    setPhase('idle');
+    setCurrentCard(randomCard());
     setNextCard(null);
-    setMultiplier(1.0);
+    setShowNext(false);
     setStreak(0);
-    setWon(null);
-    setGuessResult(null);
-    setCorrectCount(0);
-    setIsRevealing(false);
-    haptic.light();
-  };
+    setPot(0);
+  }
+
+  const isRed = (card: typeof currentCard) => card.suit === '♥' || card.suit === '♦';
 
   return (
-    <div className="flex flex-col h-full bg-black text-white select-none">
-      {/* TOP BAR */}
-      <div className="flex items-center justify-between px-5 pt-14 pb-2">
-        <span className="text-green-400 font-bold text-lg">${balance.toFixed(0)}</span>
-        {gameState === 'playing' && (
-          <span className="text-yellow-400 font-bold">${(safeBet * multiplier).toFixed(0)}</span>
-        )}
-        <button onClick={onClose} className="text-white/50 text-2xl leading-none">×</button>
-      </div>
-
-      {/* GAME TITLE */}
-      <div className="flex flex-col items-center pt-2 pb-1">
-        <div className="text-white/40 text-xs tracking-widest uppercase">Higher or Lower</div>
-        <div className="text-white/60 text-xs mt-0.5">BET {safeBet}</div>
-      </div>
-
-      {/* CORRECT COUNT */}
-      {gameState === 'playing' && (
-        <div className="flex justify-center mt-1">
-          <div className="flex gap-1">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="w-6 h-1 rounded-full"
-                style={{ background: i < correctCount ? '#22c55e' : 'rgba(255,255,255,0.15)' }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* MULTIPLIER */}
-      <div className="flex justify-center mt-3">
-        <motion.div
-          key={multiplier}
-          initial={{ scale: 1.3 }}
-          animate={{ scale: 1 }}
-          className="text-5xl font-black"
-          style={{
-            background: 'linear-gradient(135deg, #22c55e, #86efac)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            textShadow: 'none',
-          }}
-        >
-          {multiplier.toFixed(1)}x
-        </motion.div>
-      </div>
-
-      {/* CARD AREA */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-6">
-        {gameState !== 'betting' && (
-          <div className="flex gap-4 items-center">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentCard.label + currentCard.suit}
-                initial={{ rotateY: 90, opacity: 0 }}
-                animate={{ rotateY: 0, opacity: 1 }}
-                transition={{ duration: 0.3 }}
-              >
-                <CardFace card={currentCard} />
-              </motion.div>
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {nextCard ? (
-                <motion.div
-                  key="next"
-                  initial={{ rotateY: 90, opacity: 0 }}
-                  animate={{ rotateY: 0, opacity: 1 }}
-                  transition={{ duration: 0.4 }}
-                >
-                  <CardFace card={nextCard} />
-                </motion.div>
-              ) : (
-                <motion.div key="facedown" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <CardFace card={{ value: 0, suit: '♠', label: '?' }} faceDown />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* RESULT FEEDBACK */}
-        <AnimatePresence>
-          {guessResult && (
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              className="text-center"
+    <div className="flex flex-col items-center gap-5 px-4 py-6 h-full">
+      {/* Streak / Multiplier bar */}
+      <div className="flex gap-3 w-full justify-center">
+        {MULTIPLIERS.map((m, i) => (
+          <div
+            key={m}
+            className="flex flex-col items-center gap-1"
+          >
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black transition-all"
+              style={{
+                background: i < streak
+                  ? 'linear-gradient(135deg,#22c55e,#16a34a)'
+                  : i === streak && phase === 'playing'
+                  ? 'linear-gradient(135deg,#FFD700,#FF8C00)'
+                  : 'rgba(255,255,255,0.08)',
+                color: i <= streak ? '#fff' : 'rgba(255,255,255,0.3)',
+                boxShadow: i === streak && phase === 'playing' ? '0 0 12px rgba(255,215,0,0.5)' : 'none',
+                transform: i === streak && phase === 'playing' ? 'scale(1.15)' : 'scale(1)',
+              }}
             >
-              {guessResult === 'correct' ? (
-                <div className="text-green-400 font-black text-3xl" style={{ textShadow: '0 0 20px rgba(34,197,94,0.6)' }}>
-                  ✓ CORRECT! ×{multiplier.toFixed(1)}
-                </div>
-              ) : (
-                <div className="text-red-500 font-black text-3xl" style={{ textShadow: '0 0 20px rgba(239,68,68,0.6)' }}>
-                  WRONG!
-                </div>
-              )}
-            </motion.div>
-          )}
+              {m}x
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Cards area */}
+      <div className="flex items-center justify-center gap-4 w-full" style={{ minHeight: 160 }}>
+        {/* Current card */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentCard.value + currentCard.suit}
+            initial={{ opacity: 0, scale: 0.8, rotateY: -90 }}
+            animate={{ opacity: 1, scale: 1, rotateY: 0 }}
+            className="relative"
+            style={{
+              width: 110,
+              height: 155,
+              borderRadius: 16,
+              background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+              border: '2px solid rgba(255,255,255,0.15)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'column',
+            }}
+          >
+            <div
+              className="text-5xl font-black"
+              style={{ color: isRed(currentCard) ? '#ef4444' : '#fff' }}
+            >
+              {currentCard.value}
+            </div>
+            <div
+              className="text-2xl"
+              style={{ color: isRed(currentCard) ? '#ef4444' : '#fff' }}
+            >
+              {currentCard.suit}
+            </div>
+          </motion.div>
         </AnimatePresence>
 
-        {/* GAME RESULT SCREEN */}
-        {gameState === 'result' && (
-          <AnimatePresence>
+        <div className="text-3xl text-white/30">→</div>
+
+        {/* Next card */}
+        <div
+          style={{
+            width: 110,
+            height: 155,
+            borderRadius: 16,
+            background: showNext && nextCard
+              ? 'linear-gradient(135deg, #1a1a2e, #16213e)'
+              : 'rgba(255,255,255,0.05)',
+            border: '2px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+          }}
+        >
+          {showNext && nextCard ? (
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center gap-2"
+              initial={{ opacity: 0, rotateY: -90 }}
+              animate={{ opacity: 1, rotateY: 0 }}
+              className="flex flex-col items-center"
             >
               <div
-                className={`font-black text-4xl ${won ? 'text-green-400' : 'text-red-500'}`}
-                style={{ textShadow: won ? '0 0 25px rgba(34,197,94,0.7)' : '0 0 25px rgba(239,68,68,0.7)' }}
+                className="text-5xl font-black"
+                style={{ color: isRed(nextCard) ? '#ef4444' : '#fff' }}
               >
-                {won ? 'CASHED OUT!' : 'WRONG!'}
+                {nextCard.value}
               </div>
-              {won ? (
-                <div className="text-yellow-400 font-bold text-xl">
-                  +{formatCurrency(safeBet * multiplier - safeBet)}
-                </div>
-              ) : (
-                <div className="text-red-400 text-base font-semibold">
-                  YOU LOST {safeBet} COINS
-                </div>
-              )}
+              <div
+                className="text-2xl"
+                style={{ color: isRed(nextCard) ? '#ef4444' : '#fff' }}
+              >
+                {nextCard.suit}
+              </div>
             </motion.div>
-          </AnimatePresence>
-        )}
+          ) : (
+            <div className="text-4xl opacity-20">🃏</div>
+          )}
+        </div>
       </div>
 
-      {/* BOTTOM SECTION */}
-      <div className="px-6 pb-10 pt-2 flex flex-col gap-3">
-        {/* BETTING UI */}
-        {gameState === 'betting' && (
-          <>
-            <div className="text-white/40 text-xs tracking-widest uppercase text-center mb-1">Choose Bet</div>
-            <div className="grid grid-cols-4 gap-2 mb-2">
-              {BET_OPTIONS.filter(b => b <= balance + 1).map(amount => (
+      {/* Pot display */}
+      {phase === 'playing' && (
+        <motion.div
+          key={currentPot}
+          initial={{ scale: 0.9 }}
+          animate={{ scale: 1 }}
+          className="text-center"
+        >
+          <div className="text-white/50 text-xs uppercase tracking-wider">Current Pot</div>
+          <div className="text-3xl font-black gold-text">{formatCurrency(currentPot)}</div>
+          {streak > 0 && (
+            <div className="text-green-400 text-sm font-semibold">
+              🔥 {streak} in a row!
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Idle bet selector */}
+      {phase === 'idle' && (
+        <>
+          <div className="w-full">
+            <div className="text-white/50 text-xs font-semibold mb-2 uppercase tracking-wider">Bet Amount</div>
+            <div className="grid grid-cols-3 gap-2">
+              {BETS.map(b => (
                 <button
-                  key={amount}
-                  onClick={() => { setBet(amount); haptic.light(); }}
-                  className="py-3 rounded-xl font-bold text-sm"
+                  key={b}
+                  onClick={() => { setBet(b); haptics.light(); sounds.click(); }}
+                  disabled={b > balance}
+                  className="py-2 rounded-xl text-sm font-bold"
                   style={{
-                    background: bet === amount ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'rgba(255,255,255,0.08)',
-                    color: bet === amount ? '#fff' : 'rgba(255,255,255,0.6)',
-                    border: bet === amount ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                    background: bet === b
+                      ? 'linear-gradient(135deg,#a78bfa,#7c3aed)'
+                      : b > balance ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.08)',
+                    color: bet === b ? '#fff' : b > balance ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.7)',
+                    border: bet === b ? '1.5px solid rgba(167,139,250,0.4)' : '1.5px solid rgba(255,255,255,0.08)',
                   }}
                 >
-                  ${amount >= 1000 ? `${amount / 1000}K` : amount}
+                  {formatCurrency(b)}
                 </button>
               ))}
             </div>
-            <button
-              onClick={startGame}
-              className="w-full py-4 rounded-2xl font-black text-base text-black"
-              style={{ background: 'linear-gradient(135deg, #FFD700, #FF8C00)', boxShadow: '0 4px 24px rgba(255,165,0,0.4)' }}
-            >
-              START GAME
-            </button>
-          </>
-        )}
-
-        {/* PLAYING UI */}
-        {gameState === 'playing' && !guessResult && !isRevealing && (
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-3">
-              <button
-                onClick={() => guess(true)}
-                className="flex-1 py-4 rounded-2xl font-black text-base"
-                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', boxShadow: '0 4px 16px rgba(34,197,94,0.4)' }}
-              >
-                ↑ HIGHER
-              </button>
-              <button
-                onClick={() => guess(false)}
-                className="flex-1 py-4 rounded-2xl font-black text-base"
-                style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)', boxShadow: '0 4px 16px rgba(239,68,68,0.4)' }}
-              >
-                ↓ LOWER
-              </button>
-            </div>
-            {streak > 0 && (
-              <button
-                onClick={cashOut}
-                className="w-full py-3 rounded-2xl font-bold text-sm"
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: 'rgba(255,255,255,0.7)',
-                }}
-              >
-                💰 CASH OUT {formatCurrency(safeBet * multiplier)}
-              </button>
-            )}
           </div>
-        )}
-
-        {/* PLAY AGAIN */}
-        {gameState === 'result' && (
-          <button
-            onClick={reset}
-            className="w-full py-4 rounded-2xl font-black text-base"
-            style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }}
+          <div className="text-white/40 text-sm">Balance: <span className="text-white font-bold">{formatCurrency(balance)}</span></div>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={startGame}
+            disabled={balance <= 0}
+            className="w-full py-4 rounded-2xl text-xl font-black text-white"
+            style={{
+              background: 'linear-gradient(135deg, #a78bfa, #7c3aed)',
+              boxShadow: '0 4px 24px rgba(167,139,250,0.4)',
+            }}
           >
-            PLAY AGAIN
-          </button>
-        )}
-      </div>
+            🃏 DEAL
+          </motion.button>
+        </>
+      )}
 
-      {/* BOTTOM STATS */}
-      <div
-        className="flex justify-around items-center px-6 py-3 mx-4 mb-4 rounded-2xl"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-      >
-        <div className="text-center">
-          <div className="text-white font-bold text-lg">{streak}</div>
-          <div className="text-white/40 text-xs">STREAK</div>
+      {/* Playing controls */}
+      {phase === 'playing' && (
+        <div className="w-full flex flex-col gap-3">
+          <div className="flex gap-3">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => guess('higher')}
+              className="flex-1 py-4 rounded-2xl text-lg font-black text-white"
+              style={{
+                background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                boxShadow: '0 4px 20px rgba(34,197,94,0.4)',
+              }}
+            >
+              ↑ HIGHER
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => guess('lower')}
+              className="flex-1 py-4 rounded-2xl text-lg font-black text-white"
+              style={{
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                boxShadow: '0 4px 20px rgba(239,68,68,0.4)',
+              }}
+            >
+              ↓ LOWER
+            </motion.button>
+          </div>
+          {streak > 0 && (
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={cashOut}
+              className="w-full py-3 rounded-2xl text-base font-bold"
+              style={{
+                background: 'linear-gradient(135deg, #FFD700, #FF8C00)',
+                color: '#000',
+                boxShadow: '0 4px 20px rgba(255,215,0,0.4)',
+              }}
+            >
+              💰 Cash Out {formatCurrency(currentPot)}
+            </motion.button>
+          )}
         </div>
-        <div className="text-center">
-          <div className="text-white font-bold text-lg">${safeBet}</div>
-          <div className="text-white/40 text-xs">BET</div>
-        </div>
-        <div className="text-center">
-          <div className="text-white font-bold text-lg">{multiplier.toFixed(1)}x</div>
-          <div className="text-white/40 text-xs">MULTI</div>
-        </div>
-      </div>
+      )}
+
+      {/* End states */}
+      {(phase === 'cashed' || phase === 'lost') && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full flex flex-col items-center gap-4"
+        >
+          <div className={`text-4xl font-black ${phase === 'cashed' ? 'text-green-400 glow-green' : 'text-red-400 glow-red'}`}>
+            {phase === 'cashed' ? `🎉 +${formatCurrency(currentPot)}` : '💀 BUST!'}
+          </div>
+          {phase === 'lost' && (
+            <div className="text-white/50 text-sm">You got {streak} in a row</div>
+          )}
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={reset}
+            className="w-full py-4 rounded-2xl text-xl font-black text-white"
+            style={{
+              background: phase === 'cashed'
+                ? 'linear-gradient(135deg,#22c55e,#16a34a)'
+                : 'linear-gradient(135deg,#ef4444,#dc2626)',
+              boxShadow: phase === 'cashed'
+                ? '0 4px 24px rgba(34,197,94,0.4)'
+                : '0 4px 24px rgba(239,68,68,0.4)',
+            }}
+          >
+            {phase === 'cashed' ? '🃏 Play Again' : '😤 Try Again'}
+          </motion.button>
+        </motion.div>
+      )}
     </div>
   );
-};
-
-export default HigherLower;
+}

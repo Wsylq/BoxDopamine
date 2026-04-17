@@ -1,467 +1,324 @@
-// ============================================================
-// DOPAMINE BOX - Main App
-// Phone-only, iOS-style liquid glass bottom bar
-// No homepage — games screen is the main screen
-// ============================================================
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  getState,
+  subscribe,
+  formatCurrency,
+  resetBalance,
+  sounds,
+  haptics,
+} from './store/gameStore';
+import type { GameId } from './store/gameStore';
+import InfiniteFeed from './components/InfiniteFeed';
 import GameModal from './components/GameModal';
 import ParticleEffect from './components/ParticleEffect';
-import {
-  loadFromStorage, saveToStorage, formatCurrency,
-  haptic, sound, TARGET_AMOUNT
-} from './store/gameStore';
 
-type GameType = 'coinflip' | 'higherlower' | 'plinko' | 'flappy' | null;
-type TabType = 'games' | 'stats';
+type Tab = 'feed' | 'stats';
 
-// ── TOAST ────────────────────────────────────────────────────
-interface ToastProps {
-  message: string;
-  type: 'win' | 'lose' | 'info';
-  onDone: () => void;
+const GOAL = 10_000_000;
+
+// ── Stat row ────────────────────────────────────────────────────
+function StatRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div className="flex items-center justify-between py-3"
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <span className="text-white/50 text-sm">{label}</span>
+      <span className="font-bold text-base" style={{ color: accent ?? '#fff' }}>{value}</span>
+    </div>
+  );
 }
 
-const Toast: React.FC<ToastProps> = ({ message, type, onDone }) => {
+export default function App() {
+  const [tab, setTab] = useState<Tab>('feed');
+  const [activeGame, setActiveGame] = useState<GameId | null>(null);
+  const [gameState, setGameState] = useState(getState());
+  const [showParticles, setShowParticles] = useState(false);
+  const [balancePulse, setBalancePulse] = useState(false);
+
+  // Subscribe to store changes
   useEffect(() => {
-    const t = setTimeout(onDone, 2800);
-    return () => clearTimeout(t);
-  }, [onDone]);
+    const unsub = subscribe(() => {
+      const prev = gameState.balance;
+      const next = getState().balance;
+      setGameState(getState());
+      if (next > prev) {
+        setBalancePulse(true);
+        setTimeout(() => setBalancePulse(false), 500);
+        if (next - prev >= 500) {
+          setShowParticles(true);
+          setTimeout(() => setShowParticles(false), 2000);
+        }
+      }
+    });
+    return () => { unsub(); };
+  }, [gameState.balance]);
+
+  const openGame = useCallback((id: GameId) => {
+    setActiveGame(id);
+    sounds.click();
+    haptics.medium();
+  }, []);
+
+  const closeGame = useCallback(() => {
+    setActiveGame(null);
+    sounds.swoosh();
+  }, []);
+
+  const { balance, streak, totalWins, totalLosses, biggestWin } = gameState;
+  const goalPct = Math.min(100, (balance / GOAL) * 100);
 
   return (
-    <motion.div
-      initial={{ y: -80, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: -80, opacity: 0 }}
-      className="fixed top-14 left-1/2 -translate-x-1/2 z-[9998] px-6 py-3 rounded-2xl text-sm font-bold text-white shadow-2xl"
-      style={{
-        background: type === 'win'
-          ? 'linear-gradient(135deg, rgba(34,197,94,0.9), rgba(22,163,74,0.9))'
-          : type === 'lose'
-          ? 'linear-gradient(135deg, rgba(239,68,68,0.9), rgba(185,28,28,0.9))'
-          : 'rgba(30,30,30,0.9)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.15)',
-        maxWidth: '80vw',
-        textAlign: 'center',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {message}
-    </motion.div>
-  );
-};
+    <div className="fixed inset-0 flex flex-col" style={{ background: '#000', maxWidth: 430, margin: '0 auto' }}>
+      {/* Particles */}
+      {showParticles && <ParticleEffect active={showParticles} originX={0.5} originY={0.15} />}
 
-// ── GAME CARDS ───────────────────────────────────────────────
-const GAMES = [
-  {
-    id: 'coinflip' as GameType,
-    emoji: '🪙',
-    label: 'Coin Flip',
-    sub: 'Double or Nothing',
-    color: '#FF8C00',
-    glow: 'rgba(255,140,0,0.35)',
-    bg: 'linear-gradient(135deg, #1a0f00, #2d1a00)',
-    border: 'rgba(255,140,0,0.3)',
-  },
-  {
-    id: 'higherlower' as GameType,
-    emoji: '🃏',
-    label: 'Higher or Lower',
-    sub: 'Chain wins for big multipliers',
-    color: '#a78bfa',
-    glow: 'rgba(167,139,250,0.35)',
-    bg: 'linear-gradient(135deg, #0e0a1a, #1a1030)',
-    border: 'rgba(167,139,250,0.3)',
-  },
-  {
-    id: 'plinko' as GameType,
-    emoji: '🎯',
-    label: 'Plinko',
-    sub: 'Drop the ball, win big',
-    color: '#00FF94',
-    glow: 'rgba(0,255,148,0.3)',
-    bg: 'linear-gradient(135deg, #001a0e, #002d1a)',
-    border: 'rgba(0,255,148,0.25)',
-  },
-  {
-    id: 'flappy' as GameType,
-    emoji: '🐦',
-    label: 'Flappy Coins',
-    sub: '+coins per gap survived',
-    color: '#FFD700',
-    glow: 'rgba(255,215,0,0.35)',
-    bg: 'linear-gradient(135deg, #0f0d00, #1a1800)',
-    border: 'rgba(255,215,0,0.3)',
-  },
-];
-
-// ── STATS SCREEN ─────────────────────────────────────────────
-const StatsScreen: React.FC<{
-  balance: number; streak: number; totalWins: number; totalLosses: number;
-}> = ({ balance, streak, totalWins, totalLosses }) => {
-  const winRate = totalWins + totalLosses > 0
-    ? Math.round((totalWins / (totalWins + totalLosses)) * 100)
-    : 0;
-  const progress = Math.min((balance / TARGET_AMOUNT) * 100, 100);
-
-  return (
-    <div className="flex flex-col gap-5 px-5 py-6">
-      {/* Goal Progress */}
+      {/* ── TOP BAR ────────────────────────────────────────────── */}
       <div
-        className="rounded-3xl p-5"
-        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+        className="shrink-0 flex items-center justify-between px-5 pt-14 pb-4"
+        style={{
+          background: 'rgba(0,0,0,0.8)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+        }}
       >
-        <div className="text-white/40 text-xs tracking-widest uppercase mb-3">$10M Goal</div>
-        <div className="flex justify-between items-end mb-2">
-          <span className="text-2xl font-black text-white">{formatCurrency(balance)}</span>
-          <span className="text-white/30 text-xs">$10M</span>
-        </div>
-        <div className="h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+        {/* Logo */}
+        <div className="flex items-center gap-2">
           <div
-            className="h-full rounded-full transition-all duration-500"
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-lg"
             style={{
-              width: `${progress}%`,
-              background: 'linear-gradient(90deg, #22c55e, #FFD700)',
+              background: 'linear-gradient(135deg, #FF6B6B, #FFD700)',
+              boxShadow: '0 0 16px rgba(255,107,107,0.4)',
             }}
-          />
+          >
+            🎰
+          </div>
+          <div>
+            <div className="text-white font-black text-base leading-none">Dopamine</div>
+            <div className="text-white/40 text-xs leading-none mt-0.5">Box</div>
+          </div>
         </div>
-        <div className="text-white/30 text-xs mt-2 text-right">{progress.toFixed(4)}%</div>
+
+        {/* Balance chip */}
+        <motion.div
+          animate={balancePulse ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="flex flex-col items-center"
+        >
+          <div
+            className="px-4 py-1.5 rounded-2xl flex items-center gap-1.5"
+            style={{
+              background: 'rgba(255,215,0,0.12)',
+              border: '1px solid rgba(255,215,0,0.3)',
+              boxShadow: balancePulse ? '0 0 20px rgba(255,215,0,0.5)' : 'none',
+            }}
+          >
+            <span className="text-yellow-400 text-lg">💰</span>
+            <span className="font-black text-white text-base">{formatCurrency(balance)}</span>
+          </div>
+        </motion.div>
+
+        {/* Streak chip */}
+        <div
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl"
+          style={{
+            background: 'rgba(255,107,107,0.12)',
+            border: '1px solid rgba(255,107,107,0.25)',
+          }}
+        >
+          <span className="text-base">🔥</span>
+          <span className="font-black text-white text-base">{streak}</span>
+          <span className="text-white/40 text-xs">day{streak !== 1 ? 's' : ''}</span>
+        </div>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { label: 'Day Streak', value: `🔥 ${streak}`, color: '#FF6B00' },
-          { label: 'Win Rate', value: `${winRate}%`, color: '#22c55e' },
-          { label: 'Total Wins', value: totalWins, color: '#60a5fa' },
-          { label: 'Total Losses', value: totalLosses, color: '#ef4444' },
-        ].map(stat => (
-          <div
-            key={stat.label}
-            className="rounded-2xl p-4 flex flex-col gap-1"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)' }}
+      {/* ── CONTENT AREA ───────────────────────────────────────── */}
+      <div className="flex-1 overflow-hidden relative">
+        <AnimatePresence mode="wait">
+          {tab === 'feed' && (
+            <motion.div
+              key="feed"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 overflow-y-auto scroll-view"
+            >
+              <InfiniteFeed onGameOpen={openGame} />
+            </motion.div>
+          )}
+
+          {tab === 'stats' && (
+            <motion.div
+              key="stats"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 overflow-y-auto scroll-view px-5 py-6"
+            >
+              {/* Goal card */}
+              <div
+                className="rounded-3xl p-5 mb-5"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,140,0,0.06))',
+                  border: '1px solid rgba(255,215,0,0.2)',
+                }}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-4xl">🏆</span>
+                  <div>
+                    <div className="text-white font-black text-xl">$10 Million Goal</div>
+                    <div className="text-yellow-400 text-base font-bold">{goalPct.toFixed(3)}% there</div>
+                  </div>
+                </div>
+                <div className="h-4 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.max(goalPct, 0.3)}%` }}
+                    transition={{ duration: 1, ease: 'easeOut' }}
+                    className="h-full rounded-full"
+                    style={{ background: 'linear-gradient(90deg, #FFD700, #FF8C00)' }}
+                  />
+                </div>
+                <div className="flex justify-between mt-2 text-xs text-white/40">
+                  <span>{formatCurrency(balance)}</span>
+                  <span>$10,000,000</span>
+                </div>
+              </div>
+
+              {/* Stats list */}
+              <div
+                className="rounded-3xl px-5 py-2 mb-5"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <StatRow label="💰 Balance" value={formatCurrency(balance)} accent="#FFD700" />
+                <StatRow label="🔥 Day Streak" value={`${streak} days`} accent="#FF6B6B" />
+                <StatRow label="✅ Total Wins" value={`${totalWins}`} accent="#22c55e" />
+                <StatRow label="❌ Total Losses" value={`${totalLosses}`} accent="#ef4444" />
+                <StatRow
+                  label="📊 Win Rate"
+                  value={totalWins + totalLosses > 0
+                    ? `${((totalWins / (totalWins + totalLosses)) * 100).toFixed(1)}%`
+                    : 'N/A'}
+                  accent="#60a5fa"
+                />
+                <StatRow label="🎰 Biggest Win" value={formatCurrency(biggestWin)} accent="#a78bfa" />
+              </div>
+
+              {/* Games quick-access */}
+              <div className="mb-5">
+                <div className="text-white/50 text-xs uppercase tracking-wider font-semibold mb-3">Quick Play</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    { id: 'coinflip' as GameId, emoji: '🪙', label: 'Coin Flip', color: '#FF6B6B' },
+                    { id: 'higherlower' as GameId, emoji: '🃏', label: 'Hi/Lo', color: '#a78bfa' },
+                    { id: 'plinko' as GameId, emoji: '🎯', label: 'Plinko', color: '#00FF94' },
+                    { id: 'flappy' as GameId, emoji: '🐦', label: 'Flappy', color: '#FFD700' },
+                  ]).map(g => (
+                    <motion.button
+                      key={g.id}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => openGame(g.id)}
+                      className="flex flex-col items-center gap-2 p-4 rounded-3xl"
+                      style={{
+                        background: `${g.color}12`,
+                        border: `1px solid ${g.color}30`,
+                        boxShadow: `0 4px 16px ${g.color}12`,
+                      }}
+                    >
+                      <div className="text-3xl">{g.emoji}</div>
+                      <div className="text-white text-sm font-bold">{g.label}</div>
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Danger zone */}
+              {balance < 10 && (
+                <div
+                  className="rounded-3xl p-5 mb-5 text-center"
+                  style={{
+                    background: 'rgba(239,68,68,0.1)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                  }}
+                >
+                  <div className="text-3xl mb-2">💀</div>
+                  <div className="text-red-400 font-black text-lg mb-3">You're broke!</div>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => { resetBalance(); sounds.reward(); haptics.win(); }}
+                    className="px-6 py-3 rounded-2xl font-bold text-black"
+                    style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)' }}
+                  >
+                    💸 Restart with $1,000
+                  </motion.button>
+                </div>
+              )}
+
+              {/* Psychological disclaimer */}
+              <div className="text-center text-white/20 text-xs pb-8 px-4">
+                ⚠️ This is a satirical educational app simulating dopamine-loop mechanics.
+                Not real money. Gamble responsibly IRL.
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ── LIQUID GLASS TAB BAR ───────────────────────────────── */}
+      <div
+        className="shrink-0 flex items-center justify-around px-6 pb-8 pt-3"
+        style={{
+          background: 'rgba(10,10,15,0.7)',
+          backdropFilter: 'blur(40px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+        }}
+      >
+        {([
+          { id: 'feed' as Tab, label: 'Feed', icon: '🎰' },
+          { id: 'stats' as Tab, label: 'Stats', icon: '📊' },
+        ] as { id: Tab; label: string; icon: string }[]).map(t => (
+          <button
+            key={t.id}
+            onClick={() => { setTab(t.id); haptics.light(); sounds.click(); }}
+            className="flex flex-col items-center gap-1 relative"
+            style={{ minWidth: 72 }}
           >
-            <div className="text-white/40 text-xs">{stat.label}</div>
-            <div className="font-black text-2xl" style={{ color: stat.color }}>{stat.value}</div>
-          </div>
+            <div
+              className="w-14 h-10 rounded-2xl flex items-center justify-center text-2xl transition-all"
+              style={{
+                background: tab === t.id
+                  ? 'rgba(255,255,255,0.12)'
+                  : 'transparent',
+                transform: tab === t.id ? 'scale(1.08)' : 'scale(1)',
+              }}
+            >
+              {t.icon}
+            </div>
+            <span
+              className="text-xs font-semibold transition-all"
+              style={{ color: tab === t.id ? '#fff' : 'rgba(255,255,255,0.35)' }}
+            >
+              {t.label}
+            </span>
+            {tab === t.id && (
+              <motion.div
+                layoutId="tab-indicator"
+                className="absolute -bottom-1 w-1 h-1 rounded-full"
+                style={{ background: '#fff' }}
+              />
+            )}
+          </button>
         ))}
       </div>
 
-      {/* Streak info */}
-      <div
-        className="rounded-2xl p-4"
-        style={{ background: 'rgba(255,107,0,0.08)', border: '1px solid rgba(255,107,0,0.2)' }}
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">🔥</span>
-          <div>
-            <div className="font-bold text-white text-sm">{streak} Day Streak</div>
-            <div className="text-white/40 text-xs mt-0.5">Come back tomorrow to keep it going!</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ── MAIN APP ─────────────────────────────────────────────────
-export default function App() {
-  const [tab, setTab] = useState<TabType>('games');
-  const [activeGame, setActiveGame] = useState<GameType>(null);
-  const [balance, setBalance] = useState(1000);
-  const [streak, setStreak] = useState(1);
-  const [totalWins, setTotalWins] = useState(0);
-  const [totalLosses, setTotalLosses] = useState(0);
-  const [toast, setToast] = useState<{ message: string; type: 'win' | 'lose' | 'info' } | null>(null);
-  const [showParticles, setShowParticles] = useState(false);
-
-  // Load saved state
-  useEffect(() => {
-    const data = loadFromStorage();
-    setBalance(data.balance);
-    setStreak(data.streak);
-    setTotalWins(data.totalWins);
-    setTotalLosses(data.totalLosses);
-  }, []);
-
-  // Save on change
-  useEffect(() => {
-    saveToStorage(balance, streak, totalWins, totalLosses);
-  }, [balance, streak, totalWins, totalLosses]);
-
-  const handleResult = useCallback((delta: number, won: boolean) => {
-    setBalance(prev => {
-      const next = Math.max(0, prev + delta);
-      return next;
-    });
-    if (won) {
-      setTotalWins(w => w + 1);
-      setToast({ message: `+${formatCurrency(Math.abs(delta))} 🎉`, type: 'win' });
-      if (Math.abs(delta) > 500) {
-        setShowParticles(true);
-        setTimeout(() => setShowParticles(false), 2500);
-      }
-    } else if (delta < 0) {
-      setTotalLosses(l => l + 1);
-      setToast({ message: `-${formatCurrency(Math.abs(delta))}`, type: 'lose' });
-    }
-  }, []);
-
-  const openGame = (g: GameType) => {
-    haptic.medium();
-    sound.playClick();
-    setActiveGame(g);
-  };
-
-  const closeGame = () => {
-    haptic.light();
-    setActiveGame(null);
-  };
-
-  const progressPct = Math.min((balance / TARGET_AMOUNT) * 100, 100);
-
-  return (
-    <div
-      className="fixed inset-0 flex flex-col overflow-hidden"
-      style={{ background: '#000', maxWidth: 430, margin: '0 auto' }}
-    >
-      {/* ── TOP STATUS BAR ── */}
-      <div
-        className="flex items-center justify-between px-5 pt-12 pb-3"
-        style={{ background: 'rgba(0,0,0,0.9)' }}
-      >
-        <div className="flex flex-col">
-          <span className="text-white/30 text-[10px] tracking-widest uppercase">Balance</span>
-          <span
-            className="font-black text-lg leading-tight"
-            style={{
-              background: 'linear-gradient(135deg, #22c55e, #86efac)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            {formatCurrency(balance)}
-          </span>
-        </div>
-
-        {/* Progress pill */}
-        <div
-          className="flex flex-col items-center gap-1 px-4 py-1.5 rounded-xl"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-        >
-          <div className="flex items-center gap-1.5">
-            <div className="h-1 w-20 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #22c55e, #FFD700)' }}
-              />
-            </div>
-            <span className="text-white/30 text-[9px]">$10M</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-end">
-          <span className="text-white/30 text-[10px] tracking-widest uppercase">Streak</span>
-          <div className="flex items-center gap-1">
-            <span className="text-base">🔥</span>
-            <span className="font-black text-lg text-orange-400 leading-tight">{streak}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── MAIN CONTENT ── */}
-      <div
-        className="flex-1 overflow-y-auto"
-        style={{ paddingBottom: 100 }}
-      >
-        {/* GAMES TAB */}
-        {tab === 'games' && (
-          <div className="flex flex-col gap-3 px-4 pt-4">
-            <div className="text-white/20 text-xs tracking-widest uppercase px-1 mb-1">Pick a Game</div>
-            {GAMES.map(g => (
-              <motion.button
-                key={g.id}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => openGame(g.id)}
-                className="w-full rounded-3xl p-5 flex items-center gap-4 text-left"
-                style={{
-                  background: g.bg,
-                  border: `1px solid ${g.border}`,
-                  boxShadow: `0 4px 24px ${g.glow}`,
-                }}
-              >
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0"
-                  style={{
-                    background: `rgba(255,255,255,0.06)`,
-                    border: `1px solid ${g.border}`,
-                  }}
-                >
-                  {g.emoji}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-black text-white text-base">{g.label}</div>
-                  <div className="text-white/40 text-xs mt-0.5 truncate">{g.sub}</div>
-                </div>
-                <div
-                  className="text-sm font-bold flex-shrink-0"
-                  style={{ color: g.color }}
-                >
-                  ›
-                </div>
-              </motion.button>
-            ))}
-
-            {/* Balance reset if broke */}
-            {balance < 10 && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-2xl p-4 text-center"
-                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}
-              >
-                <div className="text-red-400 font-bold text-sm mb-2">You're broke 💀</div>
-                <button
-                  onClick={() => {
-                    setBalance(1000);
-                    haptic.success();
-                    setToast({ message: '+$1,000 — Back in the game!', type: 'info' });
-                  }}
-                  className="px-6 py-2 rounded-xl font-bold text-sm text-white"
-                  style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}
-                >
-                  Respawn ($1,000)
-                </button>
-              </motion.div>
-            )}
-          </div>
-        )}
-
-        {/* STATS TAB */}
-        {tab === 'stats' && (
-          <StatsScreen
-            balance={balance}
-            streak={streak}
-            totalWins={totalWins}
-            totalLosses={totalLosses}
-          />
-        )}
-      </div>
-
-      {/* ── iOS LIQUID GLASS BOTTOM BAR ── */}
-      <div
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full"
-        style={{ maxWidth: 430, paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}
-      >
-        <div className="mx-4 mb-3">
-          <div
-            className="rounded-[28px] px-2 py-2 flex items-center justify-around"
-            style={{
-              background: 'rgba(28, 28, 30, 0.82)',
-              backdropFilter: 'blur(40px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.06) inset, 0 -1px 0 rgba(0,0,0,0.4) inset',
-            }}
-          >
-            {/* Balance chip */}
-            <div
-              className="flex flex-col items-center gap-0.5 px-4 py-2 rounded-[20px] transition-all"
-              style={{
-                background: 'rgba(34,197,94,0.12)',
-                border: '1px solid rgba(34,197,94,0.2)',
-              }}
-            >
-              <span
-                className="font-black text-sm leading-tight"
-                style={{
-                  background: 'linear-gradient(135deg, #22c55e, #86efac)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
-                {formatCurrency(balance)}
-              </span>
-              <span className="text-white/30 text-[9px] tracking-widest uppercase">Balance</span>
-            </div>
-
-            {/* Games tab */}
-            <button
-              onClick={() => { setTab('games'); haptic.light(); }}
-              className="flex flex-col items-center gap-1 px-5 py-2 rounded-[20px] transition-all"
-              style={{
-                background: tab === 'games' ? 'rgba(255,255,255,0.12)' : 'transparent',
-                border: tab === 'games' ? '1px solid rgba(255,255,255,0.15)' : '1px solid transparent',
-              }}
-            >
-              <span className="text-xl">🎮</span>
-              <span
-                className="text-[10px] font-semibold tracking-wide"
-                style={{ color: tab === 'games' ? 'white' : 'rgba(255,255,255,0.4)' }}
-              >
-                Games
-              </span>
-            </button>
-
-            {/* Stats tab */}
-            <button
-              onClick={() => { setTab('stats'); haptic.light(); }}
-              className="flex flex-col items-center gap-1 px-5 py-2 rounded-[20px] transition-all"
-              style={{
-                background: tab === 'stats' ? 'rgba(255,255,255,0.12)' : 'transparent',
-                border: tab === 'stats' ? '1px solid rgba(255,255,255,0.15)' : '1px solid transparent',
-              }}
-            >
-              <span className="text-xl">📊</span>
-              <span
-                className="text-[10px] font-semibold tracking-wide"
-                style={{ color: tab === 'stats' ? 'white' : 'rgba(255,255,255,0.4)' }}
-              >
-                Stats
-              </span>
-            </button>
-
-            {/* Streak chip */}
-            <div
-              className="flex flex-col items-center gap-0.5 px-4 py-2 rounded-[20px]"
-              style={{
-                background: 'rgba(255,107,0,0.12)',
-                border: '1px solid rgba(255,107,0,0.2)',
-              }}
-            >
-              <div className="flex items-center gap-1">
-                <span className="text-sm">🔥</span>
-                <span className="font-black text-sm text-orange-400 leading-tight">{streak}</span>
-              </div>
-              <span className="text-white/30 text-[9px] tracking-widest uppercase">Streak</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── GAME MODAL ── */}
-      <GameModal
-        game={activeGame}
-        balance={balance}
-        onClose={closeGame}
-        onResult={handleResult}
-      />
-
-      {/* ── GLOBAL PARTICLES ── */}
-      <ParticleEffect active={showParticles} />
-
-      {/* ── TOAST ── */}
-      <AnimatePresence>
-        {toast && (
-          <Toast
-            key={toast.message + Date.now()}
-            message={toast.message}
-            type={toast.type}
-            onDone={() => setToast(null)}
-          />
-        )}
-      </AnimatePresence>
+      {/* Game Modal */}
+      <GameModal game={activeGame} onClose={closeGame} />
     </div>
   );
 }

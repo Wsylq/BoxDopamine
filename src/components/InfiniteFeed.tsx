@@ -1,309 +1,398 @@
-// ============================================================
-// DOPAMINE BOX - Infinite Feed
-// The addictive scrolling feed with game triggers
-// ============================================================
-import React, { useState, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { haptic, sound, formatCurrency } from '../store/gameStore';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { formatCurrency, getState, addBalance, sounds, haptics } from '../store/gameStore';
+import type { GameId } from '../store/gameStore';
 
-type GameType = 'coinflip' | 'higherlower' | 'plinko' | 'flappy';
+type CardType = 'game' | 'reward' | 'milestone' | 'taunt';
 
-interface FeedItem {
-  id: number;
-  type: 'game' | 'reward' | 'stat' | 'winner';
-  emoji: string;
-  title: string;
-  subtitle: string;
-  action: GameType | 'collect';
-  color: string;
+interface FeedCard {
+  id: string;
+  type: CardType;
+  game?: GameId;
+  rewardAmount?: number;
+  text?: string;
+  emoji?: string;
+  bg: string;
   accentColor: string;
 }
 
-function generateFeedItems(startId: number, balance: number): FeedItem[] {
-  const templates: Omit<FeedItem, 'id'>[] = [
-    {
-      type: 'game', emoji: '🃏', title: 'Higher or Lower',
-      subtitle: `Win up to ${formatCurrency(balance * 8)}!`,
-      action: 'higherlower', color: '#1a0030', accentColor: '#a78bfa',
-    },
-    {
-      type: 'reward', emoji: '🎁', title: 'FREE Reward Available!',
-      subtitle: `Claim ${formatCurrency(Math.floor(Math.random() * 500) + 50)} now`,
-      action: 'collect', color: '#1a1000', accentColor: '#FFD700',
-    },
-    {
-      type: 'game', emoji: '🪙', title: 'Coin Flip',
-      subtitle: 'Double or nothing — 50/50 odds!',
-      action: 'coinflip', color: '#1a0a00', accentColor: '#FF6B6B',
-    },
-    {
-      type: 'winner', emoji: '🏆', title: '@CryptoKing just won',
-      subtitle: `+${formatCurrency(Math.floor(Math.random() * 5000) + 1000)} on Higher/Lower`,
-      action: 'higherlower', color: '#0a1a00', accentColor: '#4ade80',
-    },
-    {
-      type: 'game', emoji: '🎯', title: 'Plinko Drop',
-      subtitle: 'Drop the ball, win big — or small!',
-      action: 'plinko', color: '#001a0a', accentColor: '#00FF94',
-    },
-    {
-      type: 'stat', emoji: '📈', title: `${Math.floor(Math.random() * 200 + 50)} playing now`,
-      subtitle: 'Join the action before it ends!',
-      action: 'higherlower', color: '#0a001a', accentColor: '#60a5fa',
-    },
-    {
-      type: 'game', emoji: '🐦', title: 'Flappy Coins',
-      subtitle: `Earn ${formatCurrency(Math.max(10, Math.floor(balance * 0.01)))} per coin!`,
-      action: 'flappy', color: '#0f0c29', accentColor: '#FFD700',
-    },
-    {
-      type: 'reward', emoji: '💰', title: 'Streak Bonus!',
-      subtitle: `Keep your streak — claim ${formatCurrency(Math.floor(Math.random() * 200) + 100)}`,
-      action: 'collect', color: '#1a0800', accentColor: '#f97316',
-    },
-  ];
+const GAME_CONFIGS: Array<{ id: GameId; emoji: string; label: string; sub: string; bg: string; border: string; glow: string; accent: string }> = [
+  {
+    id: 'coinflip',
+    emoji: '🪙',
+    label: 'Coin Flip',
+    sub: '50/50 · Win 2×',
+    bg: 'linear-gradient(135deg, rgba(255,107,107,0.15) 0%, rgba(255,140,0,0.1) 100%)',
+    border: 'rgba(255,107,107,0.3)',
+    glow: 'rgba(255,107,107,0.2)',
+    accent: '#FF6B6B',
+  },
+  {
+    id: 'higherlower',
+    emoji: '🃏',
+    label: 'Higher or Lower',
+    sub: 'Chain wins · Up to 64×',
+    bg: 'linear-gradient(135deg, rgba(167,139,250,0.15) 0%, rgba(124,58,237,0.1) 100%)',
+    border: 'rgba(167,139,250,0.3)',
+    glow: 'rgba(167,139,250,0.2)',
+    accent: '#a78bfa',
+  },
+  {
+    id: 'plinko',
+    emoji: '🎯',
+    label: 'Plinko',
+    sub: 'Physics drop · 0.2×–2×',
+    bg: 'linear-gradient(135deg, rgba(0,255,148,0.12) 0%, rgba(0,204,119,0.08) 100%)',
+    border: 'rgba(0,255,148,0.25)',
+    glow: 'rgba(0,255,148,0.15)',
+    accent: '#00FF94',
+  },
+  {
+    id: 'flappy',
+    emoji: '🐦',
+    label: 'Flappy Coins',
+    sub: 'Collect coins · $5 each',
+    bg: 'linear-gradient(135deg, rgba(255,215,0,0.15) 0%, rgba(255,140,0,0.08) 100%)',
+    border: 'rgba(255,215,0,0.3)',
+    glow: 'rgba(255,215,0,0.2)',
+    accent: '#FFD700',
+  },
+];
 
-  return templates.map((t, i) => ({ ...t, id: startId + i }));
+const REWARD_AMOUNTS = [5, 10, 15, 20, 25, 50, 100];
+const TAUNT_TEXTS = [
+  { text: "You\'re on a roll! 🔥", emoji: "🎰" },
+  { text: "One more game...", emoji: "😈" },
+  { text: "Your lucky streak is coming", emoji: "⭐" },
+  { text: "The big win is next", emoji: "💰" },
+  { text: "Can\'t stop now!", emoji: "🚀" },
+  { text: "You\'re so close to $10M", emoji: "🏆" },
+  { text: "Just one more flip...", emoji: "🪙" },
+  { text: "Today is your day", emoji: "✨" },
+];
+
+let cardCounter = 0;
+function uid() { return `card_${++cardCounter}`; }
+
+// Generate a shuffled sequence of game IDs with no adjacent duplicates
+function generateGameSequence(count: number): GameId[] {
+  const games: GameId[] = ['coinflip', 'higherlower', 'plinko', 'flappy'];
+  const result: GameId[] = [];
+  let last: GameId | null = null;
+  for (let i = 0; i < count; i++) {
+    const available = games.filter(g => g !== last);
+    const pick = available[Math.floor(Math.random() * available.length)];
+    result.push(pick);
+    last = pick;
+  }
+  return result;
 }
 
-interface InfiniteFeedProps {
-  balance: number;
-  streak: number;
-  onGameSelect: (game: GameType) => void;
-  onCollectReward: (amount: number) => void;
-}
+function generateCards(count: number, lastGame?: GameId): FeedCard[] {
+  const cards: FeedCard[] = [];
+  // Start with a game sequence of `count` length, intersperse rewards/taunts
+  const gameSeq = generateGameSequence(count * 2);
+  let gameIdx = 0;
+  let lastCardGame: GameId | undefined = lastGame;
 
-const InfiniteFeed: React.FC<InfiniteFeedProps> = ({
-  balance,
-  streak,
-  onGameSelect,
-  onCollectReward,
-}) => {
-  const [items, setItems] = useState<FeedItem[]>(() => generateFeedItems(0, balance));
-  const [nextId, setNextId] = useState(8);
-  const [collectedItems, setCollectedItems] = useState<Set<number>>(new Set());
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const lastScrollY = useRef(0);
-  const scrollVelocity = useRef(0);
+  for (let i = 0; i < count; i++) {
+    const roll = Math.random();
 
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
+    if (roll < 0.6) {
+      // Game card — pick from pre-generated sequence, skip if same as last card's game
+      let gId: GameId = gameSeq[gameIdx % gameSeq.length];
+      if (gId === lastCardGame) {
+        gameIdx++;
+        gId = gameSeq[gameIdx % gameSeq.length];
+      }
+      gameIdx++;
+      lastCardGame = gId;
 
-    const currentY = el.scrollTop;
-    scrollVelocity.current = currentY - lastScrollY.current;
-    lastScrollY.current = currentY;
-
-    if (Math.abs(scrollVelocity.current) > 15) {
-      haptic.light();
-    }
-
-    const { scrollTop, scrollHeight, clientHeight } = el;
-    if (scrollTop + clientHeight > scrollHeight - 300) {
-      setItems(prev => {
-        const newItems = generateFeedItems(nextId, balance);
-        setNextId(id => id + 8);
-        return [...prev, ...newItems];
+      const cfg = GAME_CONFIGS.find(g => g.id === gId)!;
+      cards.push({
+        id: uid(),
+        type: 'game',
+        game: gId,
+        bg: cfg.bg,
+        accentColor: cfg.accent,
+      });
+    } else if (roll < 0.82) {
+      // Reward card
+      const amt = REWARD_AMOUNTS[Math.floor(Math.random() * REWARD_AMOUNTS.length)];
+      cards.push({
+        id: uid(),
+        type: 'reward',
+        rewardAmount: amt,
+        bg: 'linear-gradient(135deg, rgba(34,197,94,0.15) 0%, rgba(16,163,74,0.08) 100%)',
+        accentColor: '#22c55e',
+      });
+    } else if (roll < 0.94) {
+      // Taunt card
+      const t = TAUNT_TEXTS[Math.floor(Math.random() * TAUNT_TEXTS.length)];
+      cards.push({
+        id: uid(),
+        type: 'taunt',
+        text: t.text,
+        emoji: t.emoji,
+        bg: 'linear-gradient(135deg, rgba(96,165,250,0.12) 0%, rgba(59,130,246,0.06) 100%)',
+        accentColor: '#60a5fa',
+      });
+    } else {
+      // Milestone card
+      const { balance } = getState();
+      const goal = 10_000_000;
+      const pct = Math.min(100, (balance / goal) * 100);
+      cards.push({
+        id: uid(),
+        type: 'milestone',
+        bg: 'linear-gradient(135deg, rgba(255,215,0,0.12) 0%, rgba(255,140,0,0.06) 100%)',
+        accentColor: '#FFD700',
+        text: `${pct.toFixed(2)}% to $10M`,
       });
     }
-  }, [nextId, balance]);
+  }
 
-  const handleAction = useCallback((item: FeedItem) => {
-    haptic.medium();
-    sound.playClick();
+  return cards;
+}
 
-    if (item.action === 'collect' && !collectedItems.has(item.id)) {
-      const amount = Math.floor(Math.random() * 500) + 50;
-      setCollectedItems(prev => new Set([...prev, item.id]));
-      onCollectReward(amount);
-      haptic.success();
-      sound.playWin();
-    } else if (item.action !== 'collect') {
-      onGameSelect(item.action);
-    }
-  }, [onGameSelect, onCollectReward, collectedItems]);
+interface Props {
+  onGameOpen: (game: GameId) => void;
+}
+
+export default function InfiniteFeed({ onGameOpen }: Props) {
+  const [cards, setCards] = useState<FeedCard[]>(() => generateCards(12));
+  const [claimedRewards, setClaimedRewards] = useState<Set<string>>(new Set());
+  const loaderRef = useRef<HTMLDivElement>(null);
+
+  // Load more at bottom
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting) {
+          setCards(prev => {
+            const lastGame = [...prev].reverse().find(c => c.game)?.game;
+            return [...prev, ...generateCards(8, lastGame)];
+          });
+        }
+      },
+      { threshold: 0.5 }
+    );
+    if (loaderRef.current) observer.observe(loaderRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleClaim = useCallback((card: FeedCard) => {
+    if (claimedRewards.has(card.id)) return;
+    setClaimedRewards(prev => new Set([...prev, card.id]));
+    addBalance(card.rewardAmount ?? 0);
+    sounds.reward();
+    haptics.win();
+  }, [claimedRewards]);
 
   return (
-    <div
-      ref={scrollRef}
-      onScroll={handleScroll}
-      className="scroll-view"
-      style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '12px 14px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-      }}
-    >
-      {/* Streak banner */}
-      <motion.div
-        animate={{ scale: [1, 1.01, 1] }}
-        transition={{ repeat: Infinity, duration: 2 }}
-        style={{
-          background: 'linear-gradient(135deg, #FF8C00, #FFD700)',
-          borderRadius: 16,
-          padding: '12px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-        }}
-      >
-        <span style={{ fontSize: 28 }}>🔥</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 900, color: '#000' }}>
-            {streak}-Day Streak! Keep it up!
-          </div>
-          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.6)' }}>
-            ⚠️ Don't break it — play today!
-          </div>
-        </div>
-        <span style={{ fontSize: 18, color: '#000' }}>→</span>
-      </motion.div>
-
-      {/* Progress to $10M */}
-      <div style={{
-        background: 'rgba(255,255,255,0.05)',
-        borderRadius: 16,
-        padding: '12px 16px',
-        border: '1px solid rgba(255,255,255,0.08)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>💰 Progress to $10M</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#FFD700' }}>
-            {((balance / 10_000_000) * 100).toFixed(4)}%
-          </span>
-        </div>
-        <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${Math.min(100, (balance / 10_000_000) * 100)}%` }}
-            style={{ height: '100%', background: 'linear-gradient(90deg, #FFD700, #FF8C00)', borderRadius: 3 }}
-          />
-        </div>
-        <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
-          {formatCurrency(balance)} / $10M — {formatCurrency(10_000_000 - balance)} to go!
-        </div>
-      </div>
-
-      {/* Quick games row */}
-      <div>
-        <div style={{ fontSize: 11, color: '#555', letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase', fontWeight: 700 }}>
-          QUICK PLAY
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-          {[
-            { emoji: '🪙', label: 'Coin Flip', game: 'coinflip' as const, color: '#FF6B6B' },
-            { emoji: '🃏', label: 'Hi/Lo', game: 'higherlower' as const, color: '#a78bfa' },
-            { emoji: '🎯', label: 'Plinko', game: 'plinko' as const, color: '#00FF94' },
-            { emoji: '🐦', label: 'Flappy', game: 'flappy' as const, color: '#FFD700' },
-          ].map(g => (
-            <button
-              key={g.game}
-              onClick={() => { haptic.medium(); sound.playClick(); onGameSelect(g.game); }}
-              style={{
-                padding: '10px 4px',
-                borderRadius: 14,
-                background: `${g.color}22`,
-                border: `1px solid ${g.color}55`,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 4,
-                cursor: 'pointer',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              <span style={{ fontSize: 22 }}>{g.emoji}</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: g.color }}>{g.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* FOR YOU header */}
-      <div style={{ fontSize: 11, color: '#555', letterSpacing: 2, marginTop: 4, textTransform: 'uppercase', fontWeight: 700 }}>
-        FOR YOU ⚡
-      </div>
-
-      {/* Feed items */}
-      {items.map((item, i) => (
+    <div className="flex flex-col gap-4 px-4 py-4">
+      {cards.map((card, idx) => (
         <motion.div
-          key={item.id}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: Math.min(i * 0.04, 0.3) }}
-          onClick={() => handleAction(item)}
-          style={{
-            background: `linear-gradient(135deg, ${item.color}, rgba(255,255,255,0.03))`,
-            borderRadius: 18,
-            padding: '16px',
-            border: `1px solid ${item.accentColor}33`,
-            cursor: 'pointer',
-            position: 'relative',
-            overflow: 'hidden',
-          }}
+          key={card.id}
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-20px' }}
+          transition={{ duration: 0.35, ease: 'easeOut', delay: Math.min(idx * 0.02, 0.1) }}
         >
-          {/* Shimmer bar */}
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, height: 2,
-            background: `linear-gradient(90deg, transparent, ${item.accentColor}, transparent)`,
-            opacity: 0.6,
-          }} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 52, height: 52, borderRadius: 14,
-              background: `${item.accentColor}22`,
-              border: `1px solid ${item.accentColor}44`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 26, flexShrink: 0,
-            }}>
-              {item.emoji}
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 2 }}>
-                {item.title}
-              </div>
-              <div style={{ fontSize: 12, color: `${item.accentColor}cc` }}>
-                {item.subtitle}
-              </div>
-            </div>
-
-            {item.action === 'collect' ? (
-              <div style={{
-                padding: '8px 14px', borderRadius: 10,
-                background: collectedItems.has(item.id)
-                  ? 'rgba(255,255,255,0.1)'
-                  : `linear-gradient(135deg, ${item.accentColor}, ${item.accentColor}cc)`,
-                color: collectedItems.has(item.id) ? '#666' : '#000',
-                fontSize: 12, fontWeight: 900, flexShrink: 0,
-                fontFamily: 'Inter, sans-serif',
-              }}>
-                {collectedItems.has(item.id) ? '✓' : 'CLAIM'}
-              </div>
-            ) : (
-              <div style={{
-                padding: '8px 14px', borderRadius: 10,
-                background: `${item.accentColor}22`,
-                border: `1px solid ${item.accentColor}55`,
-                color: item.accentColor, fontSize: 12, fontWeight: 900, flexShrink: 0,
-              }}>
-                PLAY →
-              </div>
-            )}
-          </div>
+          <FeedCardView
+            card={card}
+            claimed={claimedRewards.has(card.id)}
+            onGameOpen={onGameOpen}
+            onClaim={handleClaim}
+          />
         </motion.div>
       ))}
 
-      {/* Loading indicator */}
-      <div style={{ textAlign: 'center', padding: '16px 0', color: '#444', fontSize: 14 }}>
-        Loading more... ⬇️
+      <div ref={loaderRef} className="flex items-center justify-center py-6 text-white/20 text-sm gap-2">
+        <div className="w-2 h-2 rounded-full bg-white/20 animate-pulse" />
+        <div className="w-2 h-2 rounded-full bg-white/20 animate-pulse" style={{ animationDelay: '0.2s' }} />
+        <div className="w-2 h-2 rounded-full bg-white/20 animate-pulse" style={{ animationDelay: '0.4s' }} />
       </div>
     </div>
   );
-};
+}
 
-export default InfiniteFeed;
+// ── Individual card renderers ──────────────────────────────────
+
+interface CardProps {
+  card: FeedCard;
+  claimed: boolean;
+  onGameOpen: (game: GameId) => void;
+  onClaim: (card: FeedCard) => void;
+}
+
+function FeedCardView({ card, claimed, onGameOpen, onClaim }: CardProps) {
+  if (card.type === 'game') return <GameCard card={card} onOpen={() => onGameOpen(card.game!)} />;
+  if (card.type === 'reward') return <RewardCard card={card} claimed={claimed} onClaim={() => onClaim(card)} />;
+  if (card.type === 'taunt') return <TauntCard card={card} />;
+  if (card.type === 'milestone') return <MilestoneCard card={card} />;
+  return null;
+}
+
+function GameCard({ card, onOpen }: { card: FeedCard; onOpen: () => void }) {
+  const cfg = GAME_CONFIGS.find(g => g.id === card.game)!;
+  const [pressed, setPressed] = useState(false);
+
+  return (
+    <motion.button
+      whileTap={{ scale: 0.97 }}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
+      onPointerLeave={() => setPressed(false)}
+      onClick={() => { sounds.click(); haptics.medium(); onOpen(); }}
+      className="w-full rounded-3xl p-5 flex items-center gap-4 text-left transition-all"
+      style={{
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        boxShadow: pressed
+          ? `0 2px 12px ${cfg.glow}`
+          : `0 6px 28px ${cfg.glow}, inset 0 1px 0 rgba(255,255,255,0.06)`,
+      }}
+    >
+      {/* Icon */}
+      <div
+        className="shrink-0 text-4xl w-16 h-16 flex items-center justify-center rounded-2xl"
+        style={{
+          background: `${cfg.accent}18`,
+          border: `1.5px solid ${cfg.accent}40`,
+          boxShadow: `0 0 16px ${cfg.accent}20`,
+        }}
+      >
+        {cfg.emoji}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="text-white font-bold text-lg leading-tight">{cfg.label}</div>
+        <div className="text-white/50 text-sm mt-0.5">{cfg.sub}</div>
+        {/* Mini visual hint */}
+        <div
+          className="mt-2 h-1 rounded-full w-16"
+          style={{ background: `linear-gradient(90deg, ${cfg.accent}, transparent)` }}
+        />
+      </div>
+
+      {/* Arrow */}
+      <div
+        className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-lg font-bold"
+        style={{
+          background: `${cfg.accent}20`,
+          color: cfg.accent,
+          border: `1px solid ${cfg.accent}40`,
+        }}
+      >
+        ›
+      </div>
+    </motion.button>
+  );
+}
+
+function RewardCard({ card, claimed, onClaim }: { card: FeedCard; claimed: boolean; onClaim: () => void }) {
+  return (
+    <div
+      className="w-full rounded-3xl p-5 flex items-center gap-4"
+      style={{
+        background: card.bg,
+        border: `1px solid rgba(34,197,94,0.25)`,
+        boxShadow: '0 4px 20px rgba(34,197,94,0.1)',
+      }}
+    >
+      <div className="text-4xl w-14 h-14 flex items-center justify-center rounded-2xl shrink-0"
+        style={{ background: 'rgba(34,197,94,0.12)', border: '1.5px solid rgba(34,197,94,0.3)' }}>
+        🎁
+      </div>
+      <div className="flex-1">
+        <div className="text-white font-bold text-base">Free Reward!</div>
+        <div className="text-green-400 font-black text-xl">{formatCurrency(card.rewardAmount ?? 0)}</div>
+        <div className="text-white/40 text-xs mt-0.5">Tap to claim instantly</div>
+      </div>
+      <AnimatePresence mode="wait">
+        {claimed ? (
+          <motion.div
+            key="claimed"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="shrink-0 text-green-400 font-bold text-sm"
+          >
+            ✓ Claimed
+          </motion.div>
+        ) : (
+          <motion.button
+            key="claim"
+            whileTap={{ scale: 0.95 }}
+            onClick={onClaim}
+            className="shrink-0 px-4 py-2 rounded-2xl font-bold text-black text-sm"
+            style={{
+              background: 'linear-gradient(135deg,#22c55e,#16a34a)',
+              boxShadow: '0 4px 16px rgba(34,197,94,0.4)',
+            }}
+          >
+            Claim
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function TauntCard({ card }: { card: FeedCard }) {
+  return (
+    <div
+      className="w-full rounded-3xl p-5 text-center"
+      style={{
+        background: card.bg,
+        border: '1px solid rgba(96,165,250,0.2)',
+        boxShadow: '0 4px 20px rgba(96,165,250,0.08)',
+      }}
+    >
+      <div className="text-5xl mb-2">{card.emoji}</div>
+      <div className="text-white font-bold text-lg">{card.text}</div>
+      <div className="text-white/30 text-xs mt-1">Keep scrolling...</div>
+    </div>
+  );
+}
+
+function MilestoneCard({ card }: { card: FeedCard }) {
+  const { balance } = getState();
+  const goal = 10_000_000;
+  const pct = Math.min(100, (balance / goal) * 100);
+
+  return (
+    <div
+      className="w-full rounded-3xl p-5"
+      style={{
+        background: card.bg,
+        border: '1px solid rgba(255,215,0,0.2)',
+        boxShadow: '0 4px 20px rgba(255,215,0,0.08)',
+      }}
+    >
+      <div className="flex items-center gap-3 mb-3">
+        <div className="text-3xl">🏆</div>
+        <div>
+          <div className="text-white font-bold text-base">$10 Million Goal</div>
+          <div className="text-yellow-400 text-sm font-semibold">{pct.toFixed(3)}% there</div>
+        </div>
+      </div>
+      {/* Progress bar */}
+      <div className="h-3 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+        <motion.div
+          initial={{ width: 0 }}
+          whileInView={{ width: `${Math.max(pct, 0.5)}%` }}
+          viewport={{ once: true }}
+          transition={{ duration: 1, ease: 'easeOut' }}
+          className="h-full rounded-full"
+          style={{ background: 'linear-gradient(90deg, #FFD700, #FF8C00)' }}
+        />
+      </div>
+      <div className="flex justify-between mt-2 text-xs text-white/40">
+        <span>{formatCurrency(balance)}</span>
+        <span>$10M</span>
+      </div>
+    </div>
+  );
+}
