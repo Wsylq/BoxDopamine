@@ -38,6 +38,13 @@ class DopamineViewModel : ViewModel() {
         maybeAppendFeed(extraDepth = 4)
     }
 
+    fun ensureFeedForIndex(targetIndex: Int) {
+        if (targetIndex < 0) return
+        if (targetIndex < feed.size - 2) return
+        val missing = (targetIndex - feed.lastIndex + 6).coerceAtLeast(2)
+        maybeAppendFeed(extraDepth = missing)
+    }
+
     fun resetRun() {
         playerState = playerState.copy(coins = 1_000, lastReward = 0, scrollSpeedMultiplier = 1f)
         feed = seedFeed()
