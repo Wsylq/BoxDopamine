@@ -1,1 +1,0 @@
-# Keep default rules. Add custom release hardening here if needed.

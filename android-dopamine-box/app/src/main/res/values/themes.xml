@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Use a framework theme so resource linking does not depend on Views Material theme packages. -->
-    <style name="Theme.DopamineBox" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar" />
-</resources>
