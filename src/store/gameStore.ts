@@ -29,7 +29,7 @@ export const haptic = {
     if (navigator.vibrate) navigator.vibrate([20, 10, 20, 10, 40, 10, 80]);
   },
   lose: () => {
-    if (navigator.vibrate) navigator.vibrate([100, 30, 100]);
+    if (navigator.vibrate) navigator.vibrate([100, 30, 100, 30, 100]);
   },
   jackpot: () => {
     if (navigator.vibrate) navigator.vibrate([50, 20, 50, 20, 50, 20, 200]);
@@ -103,7 +103,6 @@ class SoundEngine {
   }
 
   playWoohoo() {
-    // "Woohoo!" ascending melody
     const notes = [392, 440, 494, 523, 587, 659, 784, 880, 1047];
     notes.forEach((note, i) => {
       setTimeout(() => this.playTone(note, 0.12, 'sine', 0.5), i * 60);

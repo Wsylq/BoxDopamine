@@ -1,55 +1,42 @@
 // ============================================================
-// DOPAMINE BOX - Plinko Mini Game
-// Drop the ball through pegs — land on multipliers!
-// Physics-based plinko board with satisfying bounces
+// PLINKO GAME
 // ============================================================
-
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { haptic, sound, formatCurrency } from '../store/gameStore';
+
+const ROWS = 8;
+const MULTIPLIERS = [0.2, 0.5, 1.0, 1.5, 2.0, 1.5, 1.0, 0.5, 0.2];
+const BET_OPTIONS = [25, 50, 100, 250, 500, 1000];
+const BOARD_WIDTH = 300;
+const BOARD_HEIGHT = 260;
+
+function getPegs() {
+  const pegs: { x: number; y: number }[] = [];
+  for (let row = 0; row < ROWS; row++) {
+    const count = row + 2;
+    const spacing = BOARD_WIDTH / (count + 1);
+    const y = ((row + 1) / (ROWS + 1)) * BOARD_HEIGHT;
+    for (let col = 0; col < count; col++) {
+      pegs.push({ x: spacing * (col + 1), y });
+    }
+  }
+  return pegs;
+}
+
+interface BallState {
+  x: number;
+  y: number;
+  progress: number;
+  slot: number;
+  key: number;
+}
 
 interface PlinkoProps {
   balance: number;
   onResult: (delta: number, won: boolean) => void;
   onClose: () => void;
 }
-
-const ROWS = 8;
-const BOARD_WIDTH = 320;
-const BOARD_HEIGHT = 360;
-const PEG_RADIUS = 5;
-
-// Multiplier slots at the bottom (higher risk = higher reward at edges)
-const MULTIPLIERS = [0.2, 0.5, 1.0, 1.5, 2.0, 1.5, 1.0, 0.5, 0.2];
-
-const BET_OPTIONS = [10, 50, 100, 500, 1000];
-
-// Peg positions
-const getPegs = () => {
-  const pegs: { x: number; y: number }[] = [];
-  for (let row = 0; row < ROWS; row++) {
-    const count = row + 2;
-    const rowY = 40 + row * (BOARD_HEIGHT - 80) / ROWS;
-    for (let col = 0; col < count; col++) {
-      const startX = BOARD_WIDTH / 2 - ((count - 1) / 2) * (BOARD_WIDTH / (ROWS + 1));
-      pegs.push({ x: startX + col * (BOARD_WIDTH / (ROWS + 1)), y: rowY });
-    }
-  }
-  return pegs;
-};
-
-interface BallState {
-  x: number;
-  y: number;
-  progress: number; // 0 to 1
-  slot: number;
-  key: number;
-}
-
-const SLOT_COLORS = [
-  '#FF4757', '#FF6B6B', '#FFA502', '#2ED573', '#00D2FF',
-  '#2ED573', '#FFA502', '#FF6B6B', '#FF4757'
-];
 
 const Plinko: React.FC<PlinkoProps> = ({ balance, onResult, onClose }) => {
   const [bet, setBet] = useState(100);
@@ -58,49 +45,40 @@ const Plinko: React.FC<PlinkoProps> = ({ balance, onResult, onClose }) => {
   const [lastResult, setLastResult] = useState<{ multiplier: number; win: boolean } | null>(null);
   const [totalBallKey, setTotalBallKey] = useState(0);
   const pegs = useRef(getPegs()).current;
-  const animRef = useRef<number>(0);
+  const animRef = useRef(0);
 
   const dropBall = useCallback(() => {
     if (dropping) return;
     const safeBet = Math.min(bet, balance);
     if (safeBet <= 0) return;
-    
+
     haptic.medium();
     sound.playClick();
     setDropping(true);
     setLastResult(null);
 
-    // Simulate ball path through pegs
-    // Each row, ball goes left or right randomly
-    const path: number[] = [];
-    let pos = 0; // relative position (0 = center)
+    let pos = 0;
     for (let r = 0; r < ROWS; r++) {
-      const dir = Math.random() < 0.5 ? -1 : 1;
-      pos += dir;
-      path.push(pos);
+      pos += Math.random() < 0.5 ? -1 : 1;
     }
-    // Map to slot index (0 to MULTIPLIERS.length-1)
     const normalizedSlot = Math.floor((pos + ROWS) / (ROWS * 2) * MULTIPLIERS.length);
     const slot = Math.max(0, Math.min(MULTIPLIERS.length - 1, normalizedSlot));
 
-    // Animate ball
     const key = totalBallKey + 1;
     setTotalBallKey(key);
 
-    // Calculate trajectory
     const startX = BOARD_WIDTH / 2;
     const endX = (slot + 0.5) * (BOARD_WIDTH / MULTIPLIERS.length);
-    
+
     const newBall: BallState = { x: startX, y: 0, progress: 0, slot, key };
     setBalls(prev => [...prev, newBall]);
 
     let progress = 0;
-    const duration = 60; // frames
-    
+    const duration = 60;
+
     const animate = () => {
       progress += 1 / duration;
-      
-      // Play plinko sound at each peg row hit
+
       if (progress > 0 && Math.abs(progress * duration % (duration / ROWS)) < 1) {
         sound.playPlinko();
         haptic.light();
@@ -109,31 +87,22 @@ const Plinko: React.FC<PlinkoProps> = ({ balance, onResult, onClose }) => {
       const currentX = startX + (endX - startX) * progress + Math.sin(progress * Math.PI * ROWS) * 10 * (1 - progress);
       const currentY = progress * (BOARD_HEIGHT - 30);
 
-      setBalls(prev => prev.map(b => b.key === key ? {
-        ...b, x: currentX, y: currentY, progress
-      } : b));
+      setBalls(prev => prev.map(b => b.key === key ? { ...b, x: currentX, y: currentY, progress } : b));
 
       if (progress < 1) {
         animRef.current = requestAnimationFrame(animate);
       } else {
-        // Ball landed
         const multiplier = MULTIPLIERS[slot];
         const won = multiplier >= 1;
         const delta = safeBet * multiplier - safeBet;
-        
-        if (won) {
-          haptic.win();
-          sound.playWin();
-        } else {
-          haptic.lose();
-          sound.playLose();
-        }
+
+        if (won) { haptic.win(); sound.playWin(); }
+        else { haptic.lose(); sound.playLose(); }
 
         setLastResult({ multiplier, win: won });
         onResult(delta, won);
         setDropping(false);
-        
-        // Remove ball after a moment
+
         setTimeout(() => {
           setBalls(prev => prev.filter(b => b.key !== key));
         }, 1000);
@@ -143,172 +112,150 @@ const Plinko: React.FC<PlinkoProps> = ({ balance, onResult, onClose }) => {
     animRef.current = requestAnimationFrame(animate);
   }, [dropping, bet, balance, onResult, totalBallKey]);
 
-  useEffect(() => {
-    return () => cancelAnimationFrame(animRef.current);
-  }, []);
+  useEffect(() => { return () => cancelAnimationFrame(animRef.current); }, []);
 
   const safeBet = Math.min(bet, balance);
 
   return (
-    <div className="flex flex-col items-center h-full overflow-y-auto pb-8">
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      background: '#0a0a0a',
+      color: '#fff',
+      fontFamily: 'Inter, -apple-system, sans-serif',
+    }}>
       {/* Header */}
-      <div className="w-full flex items-center justify-between px-4 pt-4 pb-2">
-        <button onClick={onClose} className="text-2xl" style={{ background: 'none', border: 'none', color: '#fff' }}>✕</button>
-        <h2 className="text-xl font-bold text-white">🎯 Plinko</h2>
-        <div className="text-green-400 font-bold text-sm">{formatCurrency(balance)}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px' }}>
+        <div style={{ fontSize: 20, fontWeight: 900 }}>🎯 Plinko</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#4ade80' }}>{formatCurrency(balance)}</div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: '#fff', fontSize: 16, cursor: 'pointer' }}>✕</button>
+        </div>
       </div>
 
-      {/* Last result */}
+      {/* Result */}
       <AnimatePresence>
         {lastResult && (
           <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="mb-2 px-6 py-2 rounded-2xl text-lg font-black"
             style={{
-              background: lastResult.win ? 'rgba(0,255,148,0.15)' : 'rgba(255,71,87,0.15)',
-              color: lastResult.win ? '#00FF94' : '#FF4757',
-              border: `1px solid ${lastResult.win ? 'rgba(0,255,148,0.3)' : 'rgba(255,71,87,0.3)'}`,
+              textAlign: 'center',
+              padding: '4px 0',
+              fontSize: 16,
+              fontWeight: 900,
+              color: lastResult.win ? '#4ade80' : '#ef4444',
             }}
           >
-            {lastResult.win ? '🎉' : '💀'} {lastResult.multiplier}x — {lastResult.win ? `+${formatCurrency(safeBet * lastResult.multiplier - safeBet)}` : `-${formatCurrency(safeBet - safeBet * lastResult.multiplier)}`}
+            {lastResult.win ? '🎉' : '💀'} {lastResult.multiplier}x
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Plinko Board */}
-      <div style={{ position: 'relative', width: BOARD_WIDTH, height: BOARD_HEIGHT, margin: '8px 0' }}>
-        <svg width={BOARD_WIDTH} height={BOARD_HEIGHT} style={{ position: 'absolute', top: 0, left: 0 }}>
-          {/* Pegs */}
-          {pegs.map((peg, i) => (
-            <circle
-              key={i}
-              cx={peg.x}
-              cy={peg.y}
-              r={PEG_RADIUS}
-              fill="rgba(255,255,255,0.7)"
-              style={{ filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.5))' }}
-            />
-          ))}
+      {/* Plinko board */}
+      <div style={{ display: 'flex', justifyContent: 'center', position: 'relative', flex: 1 }}>
+        <div style={{ position: 'relative', width: BOARD_WIDTH, height: BOARD_HEIGHT }}>
+          <svg width={BOARD_WIDTH} height={BOARD_HEIGHT} style={{ position: 'absolute', top: 0, left: 0 }}>
+            {pegs.map((peg, i) => (
+              <circle key={i} cx={peg.x} cy={peg.y} r={4} fill="rgba(255,255,255,0.6)" />
+            ))}
+          </svg>
 
-          {/* Slot dividers */}
-          {Array.from({ length: MULTIPLIERS.length + 1 }).map((_, i) => (
-            <line
-              key={i}
-              x1={(i * BOARD_WIDTH) / MULTIPLIERS.length}
-              y1={BOARD_HEIGHT - 30}
-              x2={(i * BOARD_WIDTH) / MULTIPLIERS.length}
-              y2={BOARD_HEIGHT}
-              stroke="rgba(255,255,255,0.3)"
-              strokeWidth={1}
-            />
-          ))}
-        </svg>
-
-        {/* Slot labels */}
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 30,
-          display: 'flex',
-        }}>
-          {MULTIPLIERS.map((mult, i) => (
+          {balls.map(ball => (
             <div
-              key={i}
+              key={ball.key}
               style={{
-                flex: 1,
+                position: 'absolute',
+                left: ball.x - 10,
+                top: ball.y - 10,
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #FFD700, #FF8C00)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: SLOT_COLORS[i],
-                fontSize: 9,
+                fontSize: 10,
                 fontWeight: 900,
-                color: '#fff',
-                fontFamily: 'Inter, sans-serif',
+                boxShadow: '0 0 10px rgba(255,215,0,0.6)',
               }}
             >
-              {mult}x
+              $
             </div>
           ))}
         </div>
+      </div>
 
-        {/* Balls */}
-        {balls.map(ball => (
-          <motion.div
-            key={ball.key}
+      {/* Multiplier slots */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 2, padding: '0 16px 10px' }}>
+        {MULTIPLIERS.map((mult, i) => (
+          <div
+            key={i}
             style={{
-              position: 'absolute',
-              left: ball.x - 10,
-              top: ball.y - 10,
-              width: 20,
-              height: 20,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #FFD700, #FF8C00)',
-              boxShadow: '0 0 10px rgba(255,215,0,0.8)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 10,
+              flex: 1,
+              padding: '6px 2px',
+              borderRadius: 6,
+              textAlign: 'center',
+              fontSize: 9,
               fontWeight: 900,
-              color: '#000',
-              zIndex: 10,
+              background: mult >= 2 ? 'rgba(74,222,128,0.3)' : mult >= 1 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.25)',
+              color: mult >= 2 ? '#4ade80' : mult >= 1 ? '#f59e0b' : '#ef4444',
+              border: `1px solid ${mult >= 2 ? 'rgba(74,222,128,0.4)' : mult >= 1 ? 'rgba(245,158,11,0.4)' : 'rgba(239,68,68,0.3)'}`,
             }}
           >
-            $
-          </motion.div>
+            {mult}x
+          </div>
         ))}
       </div>
 
-      {/* Bet options */}
-      <div className="w-full px-4">
-        <p className="text-center text-gray-400 text-sm mb-2 font-semibold">BET AMOUNT</p>
-        <div className="grid grid-cols-5 gap-2 mb-3">
-          {BET_OPTIONS.map((amount) => (
-            <motion.button
+      {/* Bottom controls */}
+      <div style={{ padding: '0 20px 32px' }}>
+        <div style={{ fontSize: 11, color: '#666', textAlign: 'center', letterSpacing: 2, marginBottom: 10, textTransform: 'uppercase' }}>Bet Amount</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+          {BET_OPTIONS.map(amount => (
+            <button
               key={amount}
-              whileTap={{ scale: 0.93 }}
               onClick={() => { setBet(amount); haptic.light(); sound.playCoin(); }}
-              className="py-2 rounded-xl text-xs font-bold"
-              style={{
-                background: bet === amount ? 'linear-gradient(135deg, #00FF94, #00B4D8)' : 'rgba(255,255,255,0.08)',
-                border: bet === amount ? '2px solid #00FF94' : '2px solid rgba(255,255,255,0.1)',
-                color: bet === amount ? '#000' : '#fff',
-                opacity: amount > balance ? 0.4 : 1,
-              }}
               disabled={amount > balance}
+              style={{
+                padding: '10px 4px',
+                borderRadius: 10,
+                background: bet === amount ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.07)',
+                border: bet === amount ? '2px solid #4ade80' : '2px solid rgba(255,255,255,0.1)',
+                color: bet === amount ? '#4ade80' : '#aaa',
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: 'pointer',
+                opacity: amount > balance ? 0.3 : 1,
+                fontFamily: 'Inter, sans-serif',
+              }}
             >
-              {formatCurrency(amount)}
-            </motion.button>
+              ${amount}
+            </button>
           ))}
         </div>
 
-        {/* Drop button */}
-        <motion.button
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={dropBall}
           disabled={dropping || safeBet <= 0}
-          className="w-full py-4 rounded-2xl text-xl font-black"
           style={{
-            background: !dropping && safeBet > 0
-              ? 'linear-gradient(135deg, #FF6B6B, #FF8E53)'
-              : 'rgba(255,255,255,0.1)',
+            width: '100%',
+            padding: '16px',
+            borderRadius: 14,
+            background: !dropping && safeBet > 0 ? 'linear-gradient(135deg, #FF6B6B, #FF8E53)' : 'rgba(255,255,255,0.1)',
+            border: 'none',
             color: !dropping && safeBet > 0 ? '#fff' : '#666',
+            fontSize: 18,
+            fontWeight: 900,
+            cursor: !dropping && safeBet > 0 ? 'pointer' : 'not-allowed',
+            fontFamily: 'Inter, sans-serif',
             boxShadow: !dropping ? '0 4px 24px rgba(255,107,107,0.4)' : 'none',
           }}
         >
           {dropping ? '⏳ Dropping...' : `🎯 DROP! (${formatCurrency(safeBet)})`}
-        </motion.button>
-      </div>
-
-      {/* Multiplier legend */}
-      <div className="mt-3 px-4 w-full">
-        <div className="flex justify-between text-xs text-gray-500">
-          <span>💀 Low mult = safe bet</span>
-          <span>🚀 High mult = risky!</span>
-        </div>
+        </button>
       </div>
     </div>
   );

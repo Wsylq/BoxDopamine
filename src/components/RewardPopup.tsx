@@ -2,7 +2,6 @@
 // DOPAMINE BOX - Reward Popup
 // Flashy "you won!" overlay with coin rain effect
 // ============================================================
-
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatCurrency } from '../store/gameStore';
@@ -20,7 +19,6 @@ const RewardPopup: React.FC<RewardPopupProps> = ({ amount, onDone }) => {
     }
   }, [amount, onDone]);
 
-  // Floating coin positions
   const coins = Array.from({ length: 12 }, (_, i) => ({
     id: i,
     x: -30 + Math.random() * 60,
@@ -39,10 +37,10 @@ const RewardPopup: React.FC<RewardPopupProps> = ({ amount, onDone }) => {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 9000,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            zIndex: 9997,
             pointerEvents: 'none',
           }}
         >
@@ -50,14 +48,13 @@ const RewardPopup: React.FC<RewardPopupProps> = ({ amount, onDone }) => {
           {coins.map(coin => (
             <motion.div
               key={coin.id}
-              initial={{ x: coin.x, y: 100, opacity: 1, scale: 1 }}
+              initial={{ y: 0, x: coin.x + '%', opacity: 1, scale: 1 }}
               animate={{ y: -200, opacity: 0, scale: 0.5 }}
               transition={{ duration: coin.duration, delay: coin.delay, ease: 'easeOut' }}
               style={{
                 position: 'absolute',
                 fontSize: coin.size,
-                top: '50%',
-                left: '50%',
+                bottom: '40%',
               }}
             >
               🪙
@@ -66,45 +63,21 @@ const RewardPopup: React.FC<RewardPopupProps> = ({ amount, onDone }) => {
 
           {/* Central reward display */}
           <motion.div
-            initial={{ scale: 0, rotate: -15, y: 50 }}
-            animate={{ scale: 1, rotate: 0, y: 0 }}
-            exit={{ scale: 0, opacity: 0, y: -50 }}
-            transition={{ type: 'spring', damping: 15, stiffness: 200 }}
+            initial={{ scale: 0.5, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.5, y: -20 }}
             style={{
               background: 'linear-gradient(135deg, #FFD700, #FF8C00)',
-              borderRadius: 28,
-              padding: '32px 40px',
+              borderRadius: 20,
+              padding: '20px 32px',
               textAlign: 'center',
-              boxShadow: '0 0 60px rgba(255,215,0,0.6), 0 20px 60px rgba(0,0,0,0.5)',
-              position: 'relative',
+              boxShadow: '0 0 60px rgba(255,215,0,0.6)',
             }}
           >
-            <div style={{ fontSize: 48, lineHeight: 1 }}>💰</div>
-            <div style={{
-              fontSize: 20,
-              fontWeight: 900,
-              color: '#000',
-              fontFamily: 'Inter, sans-serif',
-              marginTop: 8,
-              textTransform: 'uppercase',
-              letterSpacing: 2,
-            }}>
-              Collected!
-            </div>
-            <motion.div
-              initial={{ scale: 0.5 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2, type: 'spring' }}
-              style={{
-                fontSize: 36,
-                fontWeight: 900,
-                color: '#000',
-                fontFamily: 'Inter, sans-serif',
-                marginTop: 4,
-              }}
-            >
+            <div style={{ fontSize: 32 }}>💰 Collected!</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: '#000', fontFamily: 'Inter, sans-serif' }}>
               +{formatCurrency(amount)}
-            </motion.div>
+            </div>
           </motion.div>
         </motion.div>
       )}
