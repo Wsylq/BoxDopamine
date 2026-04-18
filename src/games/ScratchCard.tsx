@@ -55,12 +55,12 @@ export default function ScratchCard() {
   const startNewCard = useCallback(() => {
     if (balance < safeBet) return;
     
-    // Deduct bet
-    addBalance(-safeBet);
-    
-    // Pick random prize
+    // Pick random prize FIRST
     const selectedPrize = PRIZES[Math.floor(Math.random() * PRIZES.length)];
     prizeRef.current = selectedPrize;
+    
+    // Deduct bet
+    addBalance(-safeBet);
     
     setScratching(false);
     setRevealed(false);
@@ -70,11 +70,16 @@ export default function ScratchCard() {
     haptics.medium();
     sounds.click();
     
-    // Redraw card
-    setTimeout(() => initCard(), 50);
+    // Redraw card after state updates
+    requestAnimationFrame(() => {
+      initCard();
+    });
   }, [balance, safeBet, initCard]);
 
   useEffect(() => {
+    // Initialize first card with a prize
+    const selectedPrize = PRIZES[Math.floor(Math.random() * PRIZES.length)];
+    prizeRef.current = selectedPrize;
     initCard();
   }, [initCard]);
 
@@ -139,6 +144,7 @@ export default function ScratchCard() {
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (revealed) return;
+    e.stopPropagation(); // Prevent scroll
     isDrawingRef.current = true;
     setScratching(true);
     scratch(e.clientX, e.clientY);
@@ -146,10 +152,35 @@ export default function ScratchCard() {
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDrawingRef.current || revealed) return;
+    e.stopPropagation(); // Prevent scroll
     scratch(e.clientX, e.clientY);
   }, [revealed, scratch]);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation(); // Prevent scroll
+    isDrawingRef.current = false;
+  }, []);
+
+  // Touch handlers for mobile
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (revealed) return;
+    e.stopPropagation();
+    isDrawingRef.current = true;
+    setScratching(true);
+    const touch = e.touches[0];
+    scratch(touch.clientX, touch.clientY);
+  }, [revealed, scratch]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDrawingRef.current || revealed) return;
+    e.stopPropagation();
+    e.preventDefault(); // Prevent scroll
+    const touch = e.touches[0];
+    scratch(touch.clientX, touch.clientY);
+  }, [revealed, scratch]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.stopPropagation();
     isDrawingRef.current = false;
   }, []);
 
@@ -166,7 +197,13 @@ export default function ScratchCard() {
       {showLossEffect && <div className="red-vignette" />}
       
       {/* Card */}
-      <div className="relative" style={{ width: 300, maxWidth: '100%' }}>
+      <div 
+        className="relative" 
+        style={{ width: 300, maxWidth: '100%' }}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
+      >
         {/* Prize underneath */}
         {prize !== null && (
           <div
@@ -200,6 +237,9 @@ export default function ScratchCard() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         />
       </div>
 
