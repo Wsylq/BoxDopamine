@@ -1,12 +1,11 @@
 // ═══════════════════════════════════════════════════════════
-// P2P Multiplayer - Host or Join
+// P2P Multiplayer - Host or Join (Using Relay)
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { p2pService } from '../../services/p2pService';
+import { relayService } from '../../services/relayService';
 import { sounds, haptics } from '../../store/gameStore';
-import P2PMinesweeper from './P2PMinesweeper';
+import RelayMinesweeper from './RelayMinesweeper';
 import FriendsScreen from './FriendsScreen';
 
 export default function P2PMultiplayer() {
@@ -18,20 +17,11 @@ export default function P2PMultiplayer() {
 
   const handleHost = () => {
     setIsHost(true);
-    p2pService.init(true);
-    setView('host'); // Show host view immediately
-    
-    // Wait for peer ID with retry
-    const checkId = () => {
-      if (p2pService.myId) {
-        setHostId(p2pService.myId);
-        sounds.coin();
-        haptics.medium();
-      } else {
-        setTimeout(checkId, 200);
-      }
-    };
-    setTimeout(checkId, 500);
+    const roomId = relayService.connect(true);
+    setHostId(roomId);
+    setView('host');
+    sounds.coin();
+    haptics.medium();
   };
 
   const handleJoin = (id?: string) => {
@@ -43,26 +33,10 @@ export default function P2PMultiplayer() {
     
     console.log('Joining room:', roomId);
     setIsHost(false);
-    p2pService.init(false, roomId);
+    relayService.connect(false, roomId);
     setView('game');
     sounds.click();
     haptics.light();
-    
-    // Check connection with timeout
-    let attempts = 0;
-    const checkConnection = () => {
-      attempts++;
-      if (p2pService.getPeers().length > 0) {
-        setConnected(true);
-        console.log('Connected!');
-      } else if (attempts < 15) {
-        setTimeout(checkConnection, 1000);
-      } else {
-        alert('Connection failed. Make sure the Room ID is correct and the host is online.');
-        setView('menu');
-      }
-    };
-    setTimeout(checkConnection, 2000);
   };
 
   const copyHostId = () => {
@@ -79,26 +53,22 @@ export default function P2PMultiplayer() {
   };
 
   useEffect(() => {
-    const unsub = p2pService.subscribe(() => {
-      setConnected(p2pService.getPeers().length > 0);
-    });
-    
-    // Also listen for connection events
-    const connUnsub = p2pService.onConnection(() => {
-      setConnected(true);
-      sounds.coin();
-      haptics.medium();
+    const unsub = relayService.subscribe((data) => {
+      if (data.type === 'player_joined') {
+        setConnected(true);
+        sounds.coin();
+        haptics.medium();
+      }
     });
     
     return () => {
       unsub();
-      connUnsub();
     };
   }, []);
 
   if (view === 'game') {
-    return <P2PMinesweeper isHost={isHost} onBack={() => {
-      p2pService.disconnect();
+    return <RelayMinesweeper isHost={isHost} onBack={() => {
+      relayService.disconnect();
       setView('menu');
       setHostId('');
       setJoinId('');
@@ -156,8 +126,8 @@ export default function P2PMultiplayer() {
               <input
                 type="text"
                 value={joinId}
-                onChange={(e) => setJoinId(e.target.value)}
-                placeholder="Enter Room ID"
+                onChange={(e) => setJoinId(e.target.value.toUpperCase())}
+                placeholder="Enter Room ID (e.g., ABC123)"
                 className="w-full px-4 py-3 rounded-xl text-white mb-3"
                 style={{
                   background: 'rgba(255,255,255,0.08)',
@@ -200,58 +170,47 @@ export default function P2PMultiplayer() {
             }}
           >
             <div className="text-white font-bold mb-3">🎮 Hosting Game</div>
+            <div className="text-white/60 text-sm mb-3">Share this Room ID:</div>
             
-            {!hostId ? (
-              <div className="text-white/60 text-sm text-center py-8">
-                Generating Room ID...
-              </div>
-            ) : (
-              <>
-                <div className="text-white/60 text-sm mb-3">Share this Room ID:</div>
-                
-                <div
-                  className="p-4 rounded-xl mb-3 break-all"
-                  style={{
-                    background: 'rgba(0,0,0,0.3)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                  }}
-                >
-                  <div className="text-white font-mono text-lg text-center">{hostId}</div>
-                </div>
+            <div
+              className="p-4 rounded-xl mb-3"
+              style={{
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.1)',
+              }}
+            >
+              <div className="text-white font-mono text-2xl text-center font-black">{hostId}</div>
+            </div>
 
-                <button
-                  onClick={copyHostId}
-                  className="w-full py-3 rounded-xl font-bold mb-3"
-                  style={{
-                    background: '#22c55e',
-                    color: '#fff',
-                  }}
-                >
-                  📋 Copy Room ID
-                </button>
+            <button
+              onClick={copyHostId}
+              className="w-full py-3 rounded-xl font-bold mb-3"
+              style={{
+                background: '#22c55e',
+                color: '#fff',
+              }}
+            >
+              📋 Copy Room ID
+            </button>
 
-                <div className="text-white/60 text-xs mb-3">
-                  Players connected: {p2pService.getPeers().length}
-                </div>
+            <div className="text-white/60 text-xs mb-3 text-center">
+              {connected ? '✅ Player connected!' : '⏳ Waiting for players...'}
+            </div>
 
-                {connected && (
-                  <button
-                    onClick={() => setView('game')}
-                    className="w-full py-3 rounded-xl font-bold"
-                    style={{
-                      background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-                      color: '#000',
-                    }}
-                  >
-                    Start Game
-                  </button>
-                )}
-              </>
-            )}
+            <button
+              onClick={() => setView('game')}
+              className="w-full py-3 rounded-xl font-bold"
+              style={{
+                background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                color: '#000',
+              }}
+            >
+              Start Game
+            </button>
 
             <button
               onClick={() => {
-                p2pService.disconnect();
+                relayService.disconnect();
                 setView('menu');
                 setHostId('');
               }}
