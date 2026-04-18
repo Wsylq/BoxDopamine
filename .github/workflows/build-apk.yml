@@ -73,7 +73,7 @@ jobs:
 
       - name: Install Capacitor dependencies
         run: |
-          npm install @capacitor/core @capacitor/android
+          npm install @capacitor/core @capacitor/android @capacitor/haptics
 
       - name: Init Capacitor (if not already done)
         run: |

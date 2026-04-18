@@ -3,8 +3,8 @@ ONLY 4 FREE REWARD A DAY.
 OPEN/LAUNCH THE APP AND "TAP TO START" THE GAME SYSTEM. -- done 
 MAKE THE NAVBAR (LIQUID GLASS) FLOATING -- done 
 PLINKO COULD BE BETTER USING THE "LIQUIDGLASS" commit.
-No shake screen on loss with red vignette effect. -- 
+No shake screen on loss with red vignette effect. -- done
 No haptic effects yet.
-Current UI is laggy. -- 
+Current UI is laggy. -- done
 Flappy bird could be immersive , instead of being in a window only. -- done
-scrolling isnt smooth. -- 
+scrolling isnt smooth. -- done

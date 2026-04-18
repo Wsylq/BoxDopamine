@@ -2,6 +2,8 @@
 // Game Store — Currency, Sound, Haptics, Persistence
 // ═══════════════════════════════════════════════════════════
 
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+
 export type GameId = 'coinflip' | 'higherlower' | 'plinko' | 'flappy';
 
 const STORAGE_KEY = 'dopamine_box_v2';
@@ -153,11 +155,58 @@ export const sounds = {
 };
 
 // ── Haptics ─────────────────────────────────────────────────────────────────
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+
 export const haptics = {
-  light() { try { navigator.vibrate?.(10); } catch {} },
-  medium() { try { navigator.vibrate?.(25); } catch {} },
-  heavy() { try { navigator.vibrate?.(50); } catch {} },
-  win() { try { navigator.vibrate?.([30, 20, 30, 20, 60]); } catch {} },
-  lose() { try { navigator.vibrate?.([100, 30, 100]); } catch {} },
-  pattern(p: number[]) { try { navigator.vibrate?.(p); } catch {} },
+  async light() {
+    try {
+      await Haptics.impact({ style: ImpactStyle.Light });
+    } catch {
+      // Fallback to web API
+      try { navigator.vibrate?.(10); } catch {}
+    }
+  },
+  async medium() {
+    try {
+      await Haptics.impact({ style: ImpactStyle.Medium });
+    } catch {
+      // Fallback to web API
+      try { navigator.vibrate?.(25); } catch {}
+    }
+  },
+  async heavy() {
+    try {
+      await Haptics.impact({ style: ImpactStyle.Heavy });
+    } catch {
+      // Fallback to web API
+      try { navigator.vibrate?.(50); } catch {}
+    }
+  },
+  async win() {
+    try {
+      // Success notification pattern
+      await Haptics.notification({ type: 'SUCCESS' });
+    } catch {
+      // Fallback to web API
+      try { navigator.vibrate?.([30, 20, 30, 20, 60]); } catch {}
+    }
+  },
+  async lose() {
+    try {
+      // Error notification pattern
+      await Haptics.notification({ type: 'ERROR' });
+    } catch {
+      // Fallback to web API
+      try { navigator.vibrate?.([100, 30, 100]); } catch {}
+    }
+  },
+  async pattern(p: number[]) {
+    try {
+      // Capacitor doesn't support custom patterns, use medium impact as fallback
+      await Haptics.impact({ style: ImpactStyle.Medium });
+    } catch {
+      // Fallback to web API
+      try { navigator.vibrate?.(p); } catch {}
+    }
+  },
 };
