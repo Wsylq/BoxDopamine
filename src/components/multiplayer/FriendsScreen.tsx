@@ -1,67 +1,59 @@
 // ═══════════════════════════════════════════════════════════
-// Friends Management Screen
+// Friends Screen (Local Storage)
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { multiplayerService } from '../../services/multiplayerService';
-import { User, WSResponse } from '../../types/multiplayer';
+import { friendsService } from '../../services/friendsService';
 import { sounds, haptics } from '../../store/gameStore';
 
-export default function FriendsScreen() {
-  const [friends, setFriends] = useState<User[]>([]);
-  const [requests, setRequests] = useState<User[]>([]);
-  const [searchId, setSearchId] = useState('');
+interface Props {
+  onInvite?: (friendId: string) => void;
+}
+
+export default function FriendsScreen({ onInvite }: Props) {
+  const [friends, setFriends] = useState(friendsService.getFriends());
+  const [friendId, setFriendId] = useState('');
+  const [friendName, setFriendName] = useState('');
 
   useEffect(() => {
-    multiplayerService.getFriends();
-
-    const unsub = multiplayerService.subscribe((msg: WSResponse) => {
-      if (msg.type === 'friends_list') {
-        setFriends(msg.friends);
-        setRequests(msg.requests);
-      } else if (msg.type === 'friend_added') {
-        setFriends(prev => [...prev, msg.friend]);
-        sounds.coin();
-        haptics.light();
-      } else if (msg.type === 'friend_request_received') {
-        setRequests(prev => [...prev, msg.from]);
-        sounds.reward();
-        haptics.medium();
-      }
+    const unsub = friendsService.subscribe(() => {
+      setFriends(friendsService.getFriends());
     });
-
     return unsub;
   }, []);
 
-  const handleSendRequest = () => {
-    if (searchId.trim()) {
-      multiplayerService.sendFriendRequest(searchId.trim());
-      setSearchId('');
+  const handleAdd = () => {
+    if (friendId.trim() && friendName.trim()) {
+      friendsService.addFriend(friendId.trim(), friendName.trim());
+      setFriendId('');
+      setFriendName('');
+      sounds.coin();
+      haptics.light();
+    }
+  };
+
+  const handleRemove = (id: string) => {
+    if (confirm('Remove this friend?')) {
+      friendsService.removeFriend(id);
       sounds.click();
       haptics.light();
     }
   };
 
-  const handleAccept = (requesterId: string) => {
-    multiplayerService.acceptFriendRequest(requesterId);
-    setRequests(prev => prev.filter(r => r.id !== requesterId));
-    sounds.win();
-    haptics.medium();
-  };
-
-  const handleReject = (requesterId: string) => {
-    multiplayerService.rejectFriendRequest(requesterId);
-    setRequests(prev => prev.filter(r => r.id !== requesterId));
-    sounds.click();
-    haptics.light();
+  const handleInvite = (id: string) => {
+    if (onInvite) {
+      onInvite(id);
+      sounds.reward();
+      haptics.medium();
+    }
   };
 
   return (
     <div className="h-full overflow-y-auto" style={{ paddingTop: 72, paddingBottom: 100 }}>
       <div className="px-5 pt-4 pb-6">
         <div className="text-white font-black text-2xl">Friends</div>
-        <div className="text-white/40 text-sm">Connect and play together</div>
+        <div className="text-white/40 text-sm">Manage your friends list</div>
       </div>
 
       <div className="px-5 space-y-4 pb-8">
@@ -74,78 +66,39 @@ export default function FriendsScreen() {
           }}
         >
           <div className="text-white font-bold mb-3">Add Friend</div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={searchId}
-              onChange={(e) => setSearchId(e.target.value)}
-              placeholder="Enter User ID"
-              className="flex-1 px-4 py-2 rounded-xl text-white text-sm"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.12)',
-              }}
-            />
-            <button
-              onClick={handleSendRequest}
-              className="px-6 py-2 rounded-xl font-bold text-sm"
-              style={{
-                background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-                color: '#fff',
-              }}
-            >
-              Send
-            </button>
-          </div>
-        </div>
-
-        {/* Friend Requests */}
-        {requests.length > 0 && (
-          <div
-            className="rounded-3xl p-5"
+          <input
+            type="text"
+            value={friendName}
+            onChange={(e) => setFriendName(e.target.value)}
+            placeholder="Friend's Name"
+            className="w-full px-4 py-2 rounded-xl text-white text-sm mb-2"
             style={{
-              background: 'rgba(255,215,0,0.08)',
-              border: '1px solid rgba(255,215,0,0.2)',
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.12)',
+            }}
+          />
+          <input
+            type="text"
+            value={friendId}
+            onChange={(e) => setFriendId(e.target.value)}
+            placeholder="Room ID (they share with you)"
+            className="w-full px-4 py-2 rounded-xl text-white text-sm mb-3"
+            style={{
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.12)',
+            }}
+          />
+          <button
+            onClick={handleAdd}
+            className="w-full py-2 rounded-xl font-bold text-sm"
+            style={{
+              background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+              color: '#fff',
             }}
           >
-            <div className="text-white font-bold mb-3">Friend Requests ({requests.length})</div>
-            <div className="space-y-2">
-              {requests.map((req) => (
-                <motion.div
-                  key={req.id}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center justify-between p-3 rounded-xl"
-                  style={{
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                  }}
-                >
-                  <div>
-                    <div className="text-white font-bold text-sm">{req.username}</div>
-                    <div className="text-white/40 text-xs">{req.id}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleAccept(req.id)}
-                      className="px-4 py-1.5 rounded-lg text-xs font-bold"
-                      style={{ background: '#22c55e', color: '#fff' }}
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={() => handleReject(req.id)}
-                      className="px-4 py-1.5 rounded-lg text-xs font-bold"
-                      style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        )}
+            Add Friend
+          </button>
+        </div>
 
         {/* Friends List */}
         <div
@@ -158,28 +111,60 @@ export default function FriendsScreen() {
           <div className="text-white font-bold mb-3">Your Friends ({friends.length})</div>
           {friends.length === 0 ? (
             <div className="text-white/40 text-sm text-center py-8">
-              No friends yet. Add some to play together!
+              No friends yet. Add some above!
             </div>
           ) : (
             <div className="space-y-2">
               {friends.map((friend) => (
-                <div
+                <motion.div
                   key={friend.id}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
                   className="flex items-center justify-between p-3 rounded-xl"
                   style={{
                     background: 'rgba(255,255,255,0.05)',
                     border: '1px solid rgba(255,255,255,0.1)',
                   }}
                 >
-                  <div>
-                    <div className="text-white font-bold text-sm">{friend.username}</div>
-                    <div className="text-white/40 text-xs">{friend.id}</div>
+                  <div className="flex-1">
+                    <div className="text-white font-bold text-sm">{friend.name}</div>
+                    <div className="text-white/40 text-xs font-mono">{friend.id}</div>
                   </div>
-                  <div className="text-green-400 text-xs">● Online</div>
-                </div>
+                  <div className="flex gap-2">
+                    {onInvite && (
+                      <button
+                        onClick={() => handleInvite(friend.id)}
+                        className="px-4 py-1.5 rounded-lg text-xs font-bold"
+                        style={{ background: '#22c55e', color: '#fff' }}
+                      >
+                        Invite
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleRemove(friend.id)}
+                      className="px-4 py-1.5 rounded-lg text-xs font-bold"
+                      style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </motion.div>
               ))}
             </div>
           )}
+        </div>
+
+        {/* Info */}
+        <div
+          className="rounded-3xl p-4"
+          style={{
+            background: 'rgba(59,130,246,0.1)',
+            border: '1px solid rgba(59,130,246,0.2)',
+          }}
+        >
+          <div className="text-white/80 text-xs">
+            💡 <strong>Tip:</strong> When you host a game, share your Room ID with friends. They can save it here for quick invites later!
+          </div>
         </div>
       </div>
     </div>

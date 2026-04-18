@@ -3,9 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getState, subscribe, formatCurrency, resetBalance, sounds, haptics } from './store/gameStore';
 import GameReel from './components/GameReel';
 import ParticleEffect from './components/ParticleEffect';
-import MultiplayerLobby from './components/multiplayer/MultiplayerLobby';
-import FriendsScreen from './components/multiplayer/FriendsScreen';
-import { multiplayerService } from './services/multiplayerService';
+import P2PMultiplayer from './components/multiplayer/P2PMultiplayer';
 
 const GOAL = 10_000_000;
 
@@ -19,13 +17,12 @@ function StatRow({ label, value, accent }: { label: string; value: string; accen
   );
 }
 
-type Tab = 'feed' | 'stats' | 'multiplayer' | 'friends';
+type Tab = 'feed' | 'stats' | 'multiplayer';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('feed');
   const [gameState, setGameState] = useState(getState());
   const [showParticles, setShowParticles] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     const unsub = subscribe(() => {
@@ -41,34 +38,6 @@ export default function App() {
     });
     return () => { unsub(); };
   }, [gameState.balance]);
-
-  // Initialize multiplayer connection
-  useEffect(() => {
-    let userId = localStorage.getItem('userId');
-    if (!userId) {
-      userId = `user_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('userId', userId);
-    }
-    
-    let username = localStorage.getItem('username');
-    if (!username) {
-      username = `Player${Math.floor(Math.random() * 9999)}`;
-      localStorage.setItem('username', username);
-    }
-
-    multiplayerService.connect(userId, username);
-    
-    const unsub = multiplayerService.subscribe((msg) => {
-      if (msg.type === 'auth_success') {
-        setIsConnected(true);
-      }
-    });
-
-    return () => {
-      unsub();
-      multiplayerService.disconnect();
-    };
-  }, []);
 
   const { balance, streak, totalWins, totalLosses, biggestWin } = gameState;
   const goalPct = Math.min(100, (balance / GOAL) * 100);
@@ -114,20 +83,7 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="absolute inset-0"
             >
-              <MultiplayerLobby />
-            </motion.div>
-          )}
-
-          {tab === 'friends' && (
-            <motion.div
-              key="friends"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.2 }}
-              className="absolute inset-0"
-            >
-              <FriendsScreen />
+              <P2PMultiplayer />
             </motion.div>
           )}
 
@@ -253,7 +209,6 @@ export default function App() {
           {([
             { id: 'feed' as Tab, emoji: '🎮', label: 'Play' },
             { id: 'multiplayer' as Tab, emoji: '👥', label: 'Multi' },
-            { id: 'friends' as Tab, emoji: '👤', label: 'Friends' },
             { id: 'stats' as Tab, emoji: '📊', label: 'Stats' },
           ] as { id: Tab; emoji: string; label: string }[]).map((item, idx, arr) => {
             const isActive = tab === item.id;
