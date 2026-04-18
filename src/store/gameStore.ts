@@ -1,6 +1,6 @@
-// ============================================================
+// ═══════════════════════════════════════════════════════════
 // Game Store — Currency, Sound, Haptics, Persistence
-// ============================================================
+// ═══════════════════════════════════════════════════════════
 
 export type GameId = 'coinflip' | 'higherlower' | 'plinko' | 'flappy';
 
@@ -93,7 +93,7 @@ export function formatCurrency(n: number): string {
   return `$${n.toFixed(0)}`;
 }
 
-// ── Audio Engine ──────────────────────────────────────────────
+// ── Audio Engine ───────────────────────────────────────────────────────────
 let _ctx: AudioContext | null = null;
 
 function getCtx(): AudioContext {
@@ -152,7 +152,7 @@ export const sounds = {
   },
 };
 
-// ── Haptics ───────────────────────────────────────────────────
+// ── Haptics ─────────────────────────────────────────────────────────────────
 export const haptics = {
   light() { try { navigator.vibrate?.(10); } catch {} },
   medium() { try { navigator.vibrate?.(25); } catch {} },

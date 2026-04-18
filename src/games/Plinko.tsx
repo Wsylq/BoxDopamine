@@ -20,7 +20,6 @@ export default function Plinko() {
   const [ballPos, setBallPos] = useState<{ x: number; y: number } | null>(null);
   const [highlightSlot, setHighlightSlot] = useState<number | null>(null);
 
-
   const { balance } = getState();
   const safeBet = Math.min(bet, balance);
 
@@ -50,7 +49,6 @@ export default function Plinko() {
     setLastPath(null);
     setHighlightSlot(null);
 
-    // Generate path
     const steps: ('L' | 'R')[] = [];
     let slot = 0;
     for (let r = 0; r < ROWS; r++) {
@@ -61,13 +59,11 @@ export default function Plinko() {
     const multiplier = MULTIPLIERS[slot];
     const win = Math.round(safeBet * multiplier);
 
-    // Animate ball through pegs
     let stepIndex = 0;
-    let currentCol = 0; // starts at peg index 0 of row 0
+    let currentCol = 0;
 
     const animateStep = () => {
       if (stepIndex >= ROWS) {
-        // Ball reached bottom
         const finalX = 20 + (slot / (DROP_COLS - 1)) * (CANVAS_W - 40);
         const finalY = CANVAS_H - SLOT_H - 10;
         setBallPos({ x: finalX, y: finalY });
@@ -89,14 +85,13 @@ export default function Plinko() {
       }
 
       const row = stepIndex;
-      const dir = steps[stepIndex];
       const x = getPegX(row, currentCol);
       const y = getPegY(row);
       setBallPos({ x, y });
       sounds.peg();
       haptics.light();
 
-      if (dir === 'R') currentCol++;
+      if (steps[stepIndex] === 'R') currentCol++;
       stepIndex++;
 
       const delay = 120 + Math.random() * 60;
@@ -169,53 +164,38 @@ export default function Plinko() {
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
             style={{
               position: 'absolute',
-              width: 20,
-              height: 20,
+              width: 20, height: 20,
               borderRadius: '50%',
-              background: 'radial-gradient(circle at 35% 35%, #FFD700, #FF8C00)',
+              background: 'radial-gradient(circle at 35% 35%, #fff, #FFD700)',
               boxShadow: '0 0 12px rgba(255,215,0,0.8)',
-              zIndex: 10,
             }}
           />
         )}
       </div>
 
-      {/* Last result */}
-      {lastPath && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center"
-        >
-          <div
-            className={`text-2xl font-black ${lastPath.win >= safeBet ? 'text-green-400 glow-green' : 'text-red-400 glow-red'}`}
-          >
-            {lastPath.win > safeBet
-              ? `🎉 +${formatCurrency(lastPath.win - safeBet)}`
-              : lastPath.win === 0
-              ? '💀 Nothing!'
-              : `📉 ${formatCurrency(lastPath.win - safeBet)}`}
+      {/* Result */}
+      {lastPath && !dropping && (
+        <div className="text-center">
+          <div className={`text-2xl font-black ${lastPath.win > safeBet ? 'text-green-400' : lastPath.win === 0 ? 'text-red-400' : 'text-yellow-400'}`}>
+            {lastPath.win > safeBet ? `🎉 +${formatCurrency(lastPath.win - safeBet)}` : lastPath.win === 0 ? '💀 Miss!' : `${lastPath.multiplier}x`}
           </div>
-          <div className="text-white/50 text-sm">{lastPath.multiplier}x multiplier</div>
-        </motion.div>
+          <div className="text-white/40 text-xs">{lastPath.multiplier}x multiplier → {formatCurrency(lastPath.win)}</div>
+        </div>
       )}
 
       {/* Bet selector */}
       <div className="w-full">
-        <div className="text-white/50 text-xs font-semibold mb-2 uppercase tracking-wider">Bet Amount</div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="text-white/40 text-xs mb-2 text-center">BET AMOUNT</div>
+        <div className="flex flex-wrap gap-2 justify-center">
           {BETS.map(b => (
             <button
               key={b}
               onClick={() => { setBet(b); haptics.light(); sounds.click(); }}
-              disabled={b > balance}
-              className="py-2 rounded-xl text-sm font-bold"
+              className="px-3 py-1.5 rounded-xl text-sm font-bold transition-all"
               style={{
-                background: bet === b
-                  ? 'linear-gradient(135deg,#00FF94,#00cc77)'
-                  : b > balance ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.08)',
-                color: bet === b ? '#000' : b > balance ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.7)',
-                border: bet === b ? '1.5px solid rgba(0,255,148,0.4)' : '1.5px solid rgba(255,255,255,0.08)',
+                background: bet === b ? 'rgba(0,255,148,0.15)' : 'rgba(255,255,255,0.06)',
+                border: bet === b ? '1px solid rgba(0,255,148,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                color: bet === b ? '#00FF94' : 'rgba(255,255,255,0.5)',
               }}
             >
               {formatCurrency(b)}
@@ -224,23 +204,21 @@ export default function Plinko() {
         </div>
       </div>
 
-      <div className="text-white/40 text-sm">Balance: <span className="text-white font-bold">{formatCurrency(balance)}</span></div>
-
-      <motion.button
-        whileTap={{ scale: 0.95 }}
+      {/* Drop button */}
+      <button
         onClick={drop}
         disabled={dropping || balance <= 0}
-        className="w-full py-4 rounded-2xl text-xl font-black"
+        className="w-full py-4 rounded-2xl font-black text-lg transition-all"
         style={{
           background: dropping || balance <= 0
-            ? 'rgba(255,255,255,0.08)'
+            ? 'rgba(255,255,255,0.05)'
             : 'linear-gradient(135deg, #00FF94, #00cc77)',
           color: dropping || balance <= 0 ? 'rgba(255,255,255,0.3)' : '#000',
-          boxShadow: dropping || balance <= 0 ? 'none' : '0 4px 24px rgba(0,255,148,0.4)',
+          boxShadow: !dropping && balance > 0 ? '0 4px 20px rgba(0,255,148,0.4)' : 'none',
         }}
       >
-        {dropping ? '🎯 Dropping...' : '🎯 DROP!'}
-      </motion.button>
+        {dropping ? 'Dropping...' : `Drop Ball — ${formatCurrency(safeBet)}`}
+      </button>
     </div>
   );
 }

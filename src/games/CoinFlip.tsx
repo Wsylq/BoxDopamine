@@ -128,7 +128,7 @@ export default function CoinFlip() {
             exit={{ opacity: 0 }}
             className="text-center"
           >
-            <div className={`text-3xl font-black ${won ? 'text-green-400 glow-green' : 'text-red-400 glow-red'}`}>
+            <div className={`text-3xl font-black ${won ? 'text-green-400' : 'text-red-400'}`}>
               {won ? '🎉 YOU WIN!' : '💀 YOU LOSE'}
             </div>
             <div className="text-white/60 text-sm mt-1">
@@ -161,10 +161,6 @@ export default function CoinFlip() {
                 : 'rgba(255,255,255,0.08)',
               color: choice === s ? '#000' : '#fff',
               border: choice === s ? '2px solid rgba(255,255,255,0.4)' : '2px solid rgba(255,255,255,0.1)',
-              transform: choice === s ? 'scale(1.03)' : 'scale(1)',
-              boxShadow: choice === s
-                ? s === 'heads' ? '0 4px 20px rgba(255,215,0,0.4)' : '0 4px 20px rgba(192,192,192,0.3)'
-                : 'none',
             }}
           >
             {s === 'heads' ? '👑 Heads' : '🦅 Tails'}
@@ -174,21 +170,17 @@ export default function CoinFlip() {
 
       {/* Bet selector */}
       <div className="w-full">
-        <div className="text-white/50 text-xs font-semibold mb-2 uppercase tracking-wider">Bet Amount</div>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="text-white/40 text-xs mb-2 text-center">BET AMOUNT</div>
+        <div className="flex flex-wrap gap-2 justify-center">
           {BETS.map(b => (
             <button
               key={b}
               onClick={() => { setBet(b); haptics.light(); sounds.click(); }}
-              disabled={b > balance}
-              className="py-2 rounded-xl text-sm font-bold transition-all"
+              className="px-3 py-1.5 rounded-xl text-sm font-bold transition-all"
               style={{
-                background: bet === b
-                  ? 'linear-gradient(135deg,#FF6B6B,#FF8C00)'
-                  : b > balance ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.08)',
-                color: bet === b ? '#fff' : b > balance ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.7)',
-                border: bet === b ? '1.5px solid rgba(255,107,107,0.5)' : '1.5px solid rgba(255,255,255,0.08)',
-                transform: bet === b ? 'scale(1.05)' : 'scale(1)',
+                background: bet === b ? 'rgba(255,215,0,0.2)' : 'rgba(255,255,255,0.06)',
+                border: bet === b ? '1px solid rgba(255,215,0,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                color: bet === b ? '#FFD700' : 'rgba(255,255,255,0.5)',
               }}
             >
               {formatCurrency(b)}
@@ -197,42 +189,40 @@ export default function CoinFlip() {
         </div>
       </div>
 
-      {/* Balance */}
-      <div className="text-white/40 text-sm">
-        Balance: <span className="text-white font-bold">{formatCurrency(balance)}</span>
-        {' · '}Betting: <span className="text-yellow-400 font-bold">{formatCurrency(safeBet)}</span>
-      </div>
-
       {/* Action button */}
-      {phase === 'idle' && (
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          onClick={flip}
-          disabled={balance <= 0}
-          className="w-full py-4 rounded-2xl text-xl font-black text-black"
+      {phase === 'result' ? (
+        <button
+          onClick={reset}
+          className="w-full py-4 rounded-2xl font-black text-lg"
           style={{
-            background: balance <= 0 ? '#333' : 'linear-gradient(135deg, #FFD700, #FF8C00)',
-            boxShadow: balance <= 0 ? 'none' : '0 4px 24px rgba(255,215,0,0.4)',
+            background: 'rgba(255,255,255,0.1)',
+            border: '1px solid rgba(255,255,255,0.2)',
+            color: '#fff',
           }}
         >
-          {balance <= 0 ? "You're Broke 💀" : `🪙 FLIP!`}
-        </motion.button>
+          Play Again
+        </button>
+      ) : (
+        <button
+          onClick={flip}
+          disabled={phase !== 'idle' || balance <= 0}
+          className="w-full py-4 rounded-2xl font-black text-lg transition-all"
+          style={{
+            background: phase !== 'idle' || balance <= 0
+              ? 'rgba(255,255,255,0.05)'
+              : 'linear-gradient(135deg, #FFD700, #FFA500)',
+            color: phase !== 'idle' || balance <= 0 ? 'rgba(255,255,255,0.3)' : '#000',
+            boxShadow: phase === 'idle' && balance > 0 ? '0 4px 20px rgba(255,215,0,0.4)' : 'none',
+          }}
+        >
+          {phase === 'flipping' ? 'Flipping...' : `Flip for ${formatCurrency(safeBet)}`}
+        </button>
       )}
 
-      {phase === 'result' && (
-        <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={reset}
-          className="w-full py-4 rounded-2xl text-xl font-black"
-          style={{
-            background: won ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'linear-gradient(135deg,#ef4444,#dc2626)',
-            boxShadow: won ? '0 4px 24px rgba(34,197,94,0.4)' : '0 4px 24px rgba(239,68,68,0.4)',
-          }}
-        >
-          {won ? '🎉 Flip Again!' : '😤 Revenge Flip!'}
-        </motion.button>
+      {balance <= 0 && (
+        <div className="text-red-400 text-sm font-bold text-center">
+          💀 Broke! Game over.
+        </div>
       )}
     </div>
   );
