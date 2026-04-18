@@ -185,7 +185,7 @@ export default function App() {
       <div className="absolute bottom-0 left-0 right-0 flex justify-center z-50"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)', padding: '0 20px 20px' }}>
         <motion.div
-          className="flex items-center rounded-3xl overflow-hidden"
+          className="flex items-center rounded-3xl"
           style={{
             background: 'rgba(255,255,255,0.08)',
             backdropFilter: 'blur(32px) saturate(200%)',
@@ -203,7 +203,7 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => switchTab(item.id)}
-                className="flex flex-col items-center gap-0.5 transition-all"
+                className="flex flex-col items-center gap-0.5 transition-all rounded-3xl"
                 style={{
                   padding: '10px 32px',
                   background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',

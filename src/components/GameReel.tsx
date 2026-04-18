@@ -65,7 +65,7 @@ function GameComponent({ gameId }: { gameId: GameId }) {
 }
 
 // ── Single game slide ──────────────────────────────────────────
-function GameSlide({ gameId, isActive }: { gameId: GameId; isActive: boolean }) {
+function GameSlide({ gameId, isActive, isFirstEver }: { gameId: GameId; isActive: boolean; isFirstEver: boolean }) {
   const meta = GAME_META[gameId];
   const [started, setStarted] = useState(false);
 
@@ -113,9 +113,9 @@ function GameSlide({ gameId, isActive }: { gameId: GameId; isActive: boolean }) 
         </div>
       </div>
 
-      {/* Tap-to-start overlay */}
+      {/* Tap-to-start overlay (only show on first game ever) */}
       <AnimatePresence>
-        {!started && (
+        {!started && isFirstEver && (
           <motion.div
             key="tap-overlay"
             initial={{ opacity: 1 }}
@@ -308,46 +308,25 @@ export default function GameReel() {
     <div className="fixed inset-0 flex flex-col" style={{ background: '#000', maxWidth: 430, margin: '0 auto' }}>
       {showParticles && <ParticleEffect active={showParticles} originX={0.5} originY={0.08} />}
 
-      {/* ── Floating Liquid Glass Navbar ── */}
+      {/* ── Floating Stats (No Background) ── */}
       <div
-        className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4"
+        className="absolute top-0 left-0 right-0 z-50 flex items-center justify-end gap-3 px-4"
         style={{
           paddingTop: 'max(env(safe-area-inset-top), 12px)',
           paddingBottom: 12,
-          // Liquid glass effect
-          background: 'rgba(255, 255, 255, 0.06)',
-          backdropFilter: 'blur(28px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(28px) saturate(180%)',
-          borderBottom: '1px solid rgba(255,255,255,0.10)',
-          boxShadow: '0 4px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12)',
         }}
       >
-        {/* Logo */}
-        <div className="flex items-center gap-2">
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-base"
-            style={{
-              background: 'linear-gradient(135deg, #FF6B6B, #FFD700)',
-              boxShadow: '0 0 12px rgba(255,107,107,0.5)',
-            }}
-          >
-            📦
-          </div>
-          <div>
-            <div className="text-white font-black text-sm leading-none">Dopamine</div>
-            <div className="text-white/40 text-xs leading-none mt-0.5">Box</div>
-          </div>
-        </div>
-
         {/* Balance chip */}
         <motion.div
           animate={balancePulse ? { scale: [1, 1.12, 1] } : { scale: 1 }}
           transition={{ duration: 0.3 }}
           className="px-3 py-1.5 rounded-2xl flex items-center gap-1.5"
           style={{
-            background: 'rgba(255,215,0,0.12)',
-            border: '1px solid rgba(255,215,0,0.3)',
-            boxShadow: balancePulse ? '0 0 16px rgba(255,215,0,0.5)' : 'none',
+            background: 'rgba(255,215,0,0.15)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,215,0,0.35)',
+            boxShadow: balancePulse ? '0 0 16px rgba(255,215,0,0.5), 0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.3)',
           }}
         >
           <span className="text-yellow-400 text-sm">💰</span>
@@ -358,8 +337,11 @@ export default function GameReel() {
         <div
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl"
           style={{
-            background: 'rgba(255,107,107,0.12)',
-            border: '1px solid rgba(255,107,107,0.25)',
+            background: 'rgba(255,107,107,0.15)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,107,107,0.3)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
           }}
         >
           <span className="text-sm">🔥</span>
@@ -398,7 +380,7 @@ export default function GameReel() {
               key={`${gameId}-${idx}`}
               style={{ height: containerH, overflow: 'hidden' }}
             >
-              <GameSlide gameId={gameId} isActive={idx === currentIndex} />
+              <GameSlide gameId={gameId} isActive={idx === currentIndex} isFirstEver={idx === 0} />
             </div>
           ))}
         </motion.div>
