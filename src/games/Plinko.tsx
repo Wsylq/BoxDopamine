@@ -1,117 +1,212 @@
-import { useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { addBalance, formatCurrency, getState, sounds, haptics } from '../store/gameStore';
 
-const ROWS = 8;
 const MULTIPLIERS = [0.2, 0.5, 1.0, 1.5, 2.0, 1.5, 1.0, 0.5, 0.2];
 const BETS = [10, 25, 50, 100, 250, 500];
 
-interface PlinkoPath {
-  steps: ('L' | 'R')[];
-  finalSlot: number;
-  multiplier: number;
-  win: number;
+interface Ball { 
+  x: number; 
+  y: number; 
+  vx: number; 
+  vy: number; 
+  trail: { x: number; y: number }[];
 }
 
+interface Peg { 
+  x: number; 
+  y: number; 
+}
+
+const ROWS = 8;
+const CANVAS_W = 320;
+const CANVAS_H = 420;
+const PEG_R = 5;
+const BALL_R = 8;
+
 export default function Plinko() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [bet, setBet] = useState(50);
   const [dropping, setDropping] = useState(false);
-  const [lastPath, setLastPath] = useState<PlinkoPath | null>(null);
-  const [ballPos, setBallPos] = useState<{ x: number; y: number } | null>(null);
-  const [highlightSlot, setHighlightSlot] = useState<number | null>(null);
+  const [lastResult, setLastResult] = useState<{ mult: number; delta: number } | null>(null);
   const [showLossEffect, setShowLossEffect] = useState(false);
+  const ballRef = useRef<Ball | null>(null);
+  const animRef = useRef<number>(0);
+  const pegsRef = useRef<Peg[]>([]);
 
   const { balance } = getState();
   const safeBet = Math.min(bet, balance);
 
-  const DROP_COLS = 9;
-  const CANVAS_W = 320;
-  const CANVAS_H = 380;
-  const PEG_R = 5;
-  const SLOT_H = 36;
+  // Build peg layout
+  useEffect(() => {
+    const pegs: Peg[] = [];
+    const topPad = 60;
+    const rowH = (CANVAS_H - topPad - 80) / ROWS;
+    for (let row = 0; row < ROWS; row++) {
+      const count = row + 3;
+      const y = topPad + row * rowH;
+      const totalW = (count - 1) * 36;
+      for (let col = 0; col < count; col++) {
+        pegs.push({ x: CANVAS_W / 2 - totalW / 2 + col * 36, y });
+      }
+    }
+    pegsRef.current = pegs;
+  }, []);
 
-  function getPegX(row: number, col: number) {
-    const pegsInRow = row + 2;
-    const totalWidth = CANVAS_W - 40;
-    const spacing = totalWidth / (pegsInRow - 1);
-    return 20 + col * spacing;
-  }
+  const drawScene = useCallback((ctx: CanvasRenderingContext2D, ball: Ball | null) => {
+    // Background
+    const bg = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    bg.addColorStop(0, '#0a0a0f');
+    bg.addColorStop(1, '#0f0a1a');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-  function getPegY(row: number) {
-    return 30 + row * ((CANVAS_H - SLOT_H - 50) / ROWS);
-  }
+    // Pegs
+    for (const peg of pegsRef.current) {
+      ctx.beginPath();
+      ctx.arc(peg.x, peg.y, PEG_R, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fill();
+    }
 
-  const drop = useCallback(() => {
-    if (dropping || balance <= 0) return;
+    // Multiplier buckets
+    const bucketW = CANVAS_W / MULTIPLIERS.length;
+    const bucketY = CANVAS_H - 45;
+    MULTIPLIERS.forEach((m, i) => {
+      const bx = i * bucketW;
+      const color = m >= 2 ? 'rgba(74,222,128,0.35)' : m >= 1 ? 'rgba(245,158,11,0.35)' : 'rgba(239,68,68,0.25)';
+      const textColor = m >= 2 ? '#4ade80' : m >= 1 ? '#f59e0b' : '#ef4444';
+      ctx.fillStyle = color;
+      ctx.fillRect(bx + 1, bucketY, bucketW - 2, 40);
+      ctx.fillStyle = textColor;
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${m}x`, bx + bucketW / 2, bucketY + 25);
+    });
+
+    // Ball
+    if (ball) {
+      // Trail
+      ball.trail.forEach((pt, i) => {
+        const alpha = (i / ball.trail.length) * 0.4;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, BALL_R * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,215,0,${alpha})`;
+        ctx.fill();
+      });
+      // Ball
+      const grad = ctx.createRadialGradient(ball.x - 2, ball.y - 2, 1, ball.x, ball.y, BALL_R);
+      grad.addColorStop(0, '#FFE066');
+      grad.addColorStop(1, '#CC9900');
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+  }, []);
+
+  const dropBall = useCallback(() => {
+    if (dropping || balance < safeBet) return;
+    setDropping(true);
+    setLastResult(null);
     haptics.medium();
     sounds.click();
-    addBalance(-safeBet);
-    setDropping(true);
-    setLastPath(null);
-    setHighlightSlot(null);
 
-    const steps: ('L' | 'R')[] = [];
-    let slot = 0;
-    for (let r = 0; r < ROWS; r++) {
-      const dir: 'L' | 'R' = Math.random() < 0.5 ? 'L' : 'R';
-      steps.push(dir);
-      if (dir === 'R') slot++;
-    }
-    const multiplier = MULTIPLIERS[slot];
-    const win = Math.round(safeBet * multiplier);
+    ballRef.current = {
+      x: CANVAS_W / 2 + (Math.random() - 0.5) * 10,
+      y: 20,
+      vx: (Math.random() - 0.5) * 1,
+      vy: 2,
+      trail: [],
+    };
 
-    let stepIndex = 0;
-    let currentCol = 0;
+    const animate = () => {
+      const ball = ballRef.current;
+      if (!ball) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    const animateStep = () => {
-      if (stepIndex >= ROWS) {
-        const finalX = 20 + (slot / (DROP_COLS - 1)) * (CANVAS_W - 40);
-        const finalY = CANVAS_H - SLOT_H - 10;
-        setBallPos({ x: finalX, y: finalY });
-        setHighlightSlot(slot);
+      // Physics
+      ball.vy += 0.25;
+      ball.vx *= 0.99;
+      ball.x += ball.vx;
+      ball.y += ball.vy;
 
-        if (win > 0) addBalance(win);
+      // Trail
+      ball.trail.push({ x: ball.x, y: ball.y });
+      if (ball.trail.length > 12) ball.trail.shift();
 
-        const path: PlinkoPath = { steps, finalSlot: slot, multiplier, win };
-        setLastPath(path);
+      // Peg collision
+      for (const peg of pegsRef.current) {
+        const dx = ball.x - peg.x;
+        const dy = ball.y - peg.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < PEG_R + BALL_R) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const dot = ball.vx * nx + ball.vy * ny;
+          ball.vx = (ball.vx - 2 * dot * nx) * 0.7 + (Math.random() - 0.5) * 1.5;
+          ball.vy = Math.abs(ball.vy - 2 * dot * ny) * 0.6 + 1;
+          ball.x = peg.x + nx * (PEG_R + BALL_R + 1);
+          ball.y = peg.y + ny * (PEG_R + BALL_R + 1);
+          sounds.peg();
+          haptics.light();
+        }
+      }
 
-        setTimeout(() => {
-          setBallPos(null);
-          setDropping(false);
-          if (win > safeBet) { sounds.win(); haptics.win(); }
-          else if (win === 0) { 
-            sounds.lose(); 
-            haptics.lose();
-            setShowLossEffect(true);
-            setTimeout(() => setShowLossEffect(false), 600);
-          }
-          else sounds.coin();
-        }, 600);
+      // Wall bounce
+      if (ball.x < BALL_R) { ball.x = BALL_R; ball.vx = Math.abs(ball.vx); }
+      if (ball.x > CANVAS_W - BALL_R) { ball.x = CANVAS_W - BALL_R; ball.vx = -Math.abs(ball.vx); }
+
+      drawScene(ctx, ball);
+
+      // Bottom reached
+      if (ball.y > CANVAS_H - 50) {
+        const bucketW = CANVAS_W / MULTIPLIERS.length;
+        const idx = Math.min(Math.floor(ball.x / bucketW), MULTIPLIERS.length - 1);
+        const mult = MULTIPLIERS[idx];
+        const payout = Math.floor(safeBet * mult);
+        const delta = payout - safeBet;
+        
+        setLastResult({ mult, delta });
+        setDropping(false);
+        ballRef.current = null;
+        
+        addBalance(delta);
+        
+        if (mult >= 2) { 
+          haptics.win(); 
+          sounds.bigWin(); 
+        } else if (mult >= 1) { 
+          haptics.win(); 
+          sounds.win(); 
+        } else { 
+          haptics.lose(); 
+          sounds.lose();
+          setShowLossEffect(true);
+          setTimeout(() => setShowLossEffect(false), 600);
+        }
+        
+        drawScene(ctx, null);
         return;
       }
 
-      const row = stepIndex;
-      const x = getPegX(row, currentCol);
-      const y = getPegY(row);
-      setBallPos({ x, y });
-      sounds.peg();
-      haptics.light();
-
-      if (steps[stepIndex] === 'R') currentCol++;
-      stepIndex++;
-
-      const delay = 120 + Math.random() * 60;
-      setTimeout(animateStep, delay);
+      animRef.current = requestAnimationFrame(animate);
     };
 
-    setTimeout(animateStep, 100);
-  }, [dropping, balance, safeBet]);
+    animRef.current = requestAnimationFrame(animate);
+  }, [dropping, balance, safeBet, drawScene]);
 
-  const pegColor = '#60a5fa';
-  const slotColors = [
-    '#ef4444', '#f97316', '#eab308', '#22c55e', '#22d3ee',
-    '#22c55e', '#eab308', '#f97316', '#ef4444'
-  ];
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = CANVAS_W;
+    canvas.height = CANVAS_H;
+    const ctx = canvas.getContext('2d');
+    if (ctx) drawScene(ctx, null);
+    return () => cancelAnimationFrame(animRef.current);
+  }, [drawScene]);
 
   return (
     <div className="flex flex-col items-center gap-4 px-4 py-4 h-full">
@@ -119,76 +214,37 @@ export default function Plinko() {
       {showLossEffect && <div className="red-vignette" />}
       
       {/* Canvas */}
-      <div className="relative" style={{ width: CANVAS_W, height: CANVAS_H }}>
-        <svg width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', top: 0, left: 0 }}>
-          {/* Pegs */}
-          {Array.from({ length: ROWS }).map((_, row) => {
-            const pegsInRow = row + 2;
-            return Array.from({ length: pegsInRow }).map((_, col) => {
-              const x = getPegX(row, col);
-              const y = getPegY(row);
-              return (
-                <circle key={`${row}-${col}`} cx={x} cy={y} r={PEG_R}
-                  fill={pegColor} opacity={0.9}
-                  style={{ filter: 'drop-shadow(0 0 4px rgba(96,165,250,0.6))' }}
-                />
-              );
-            });
-          })}
-
-          {/* Slots */}
-          {MULTIPLIERS.map((m, i) => {
-            const x = 20 + (i / (DROP_COLS - 1)) * (CANVAS_W - 40);
-            const y = CANVAS_H - SLOT_H;
-            const w = (CANVAS_W - 40) / (DROP_COLS - 1);
-            const isHighlighted = highlightSlot === i;
-            return (
-              <g key={i}>
-                <rect
-                  x={x - w / 2 + 2} y={y}
-                  width={w - 4} height={SLOT_H - 4}
-                  rx={8}
-                  fill={isHighlighted ? slotColors[i] : `${slotColors[i]}33`}
-                  stroke={slotColors[i]}
-                  strokeWidth={isHighlighted ? 2 : 1}
-                  style={isHighlighted ? { filter: `drop-shadow(0 0 8px ${slotColors[i]})` } : {}}
-                />
-                <text
-                  x={x} y={y + SLOT_H / 2 + 1}
-                  textAnchor="middle" dominantBaseline="middle"
-                  fontSize={10} fontWeight="bold"
-                  fill={isHighlighted ? '#fff' : slotColors[i]}
-                >
-                  {m}x
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Ball */}
-        {ballPos && (
-          <motion.div
-            animate={{ x: ballPos.x - 10, y: ballPos.y - 10 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            style={{
-              position: 'absolute',
-              width: 20, height: 20,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle at 35% 35%, #fff, #FFD700)',
-              boxShadow: '0 0 12px rgba(255,215,0,0.8)',
-            }}
-          />
-        )}
+      <div className="relative" style={{ width: CANVAS_W, maxWidth: '100%' }}>
+        <canvas 
+          ref={canvasRef} 
+          style={{ 
+            width: '100%', 
+            height: 'auto',
+            display: 'block',
+            borderRadius: '16px',
+          }} 
+        />
       </div>
 
       {/* Result */}
-      {lastPath && !dropping && (
-        <div className={`text-center ${lastPath.win === 0 ? 'shake-intense' : ''}`}>
-          <div className={`text-2xl font-black ${lastPath.win > safeBet ? 'text-green-400' : lastPath.win === 0 ? 'text-red-400' : 'text-yellow-400'}`}>
-            {lastPath.win > safeBet ? `🎉 +${formatCurrency(lastPath.win - safeBet)}` : lastPath.win === 0 ? '💀 Miss!' : `${lastPath.multiplier}x`}
+      {lastResult && !dropping && (
+        <div className={`text-center ${lastResult.delta < 0 ? 'shake-intense' : ''}`}>
+          <div className={`text-2xl font-black ${lastResult.delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {lastResult.delta > 0 ? `🎉 +${formatCurrency(lastResult.delta)}` : lastResult.delta === 0 ? '😐 Break Even' : `💀 ${formatCurrency(lastResult.delta)}`}
           </div>
-          <div className="text-white/40 text-xs">{lastPath.multiplier}x multiplier → {formatCurrency(lastPath.win)}</div>
+          <div className="text-white/40 text-xs">{lastResult.mult}x multiplier → {formatCurrency(Math.floor(safeBet * lastResult.mult))}</div>
+        </div>
+      )}
+
+      {dropping && (
+        <div className="text-white/60 text-lg font-semibold">
+          Dropping...
+        </div>
+      )}
+
+      {!dropping && !lastResult && (
+        <div className="text-white/40 text-sm">
+          Drop the ball!
         </div>
       )}
 
@@ -215,7 +271,7 @@ export default function Plinko() {
 
       {/* Drop button */}
       <button
-        onClick={drop}
+        onClick={dropBall}
         disabled={dropping || balance <= 0}
         className="w-full py-4 rounded-2xl font-black text-lg transition-all"
         style={{
@@ -228,6 +284,12 @@ export default function Plinko() {
       >
         {dropping ? 'Dropping...' : `Drop Ball — ${formatCurrency(safeBet)}`}
       </button>
+
+      {balance <= 0 && (
+        <div className="text-red-400 text-sm font-bold text-center">
+          💀 Broke! Game over.
+        </div>
+      )}
     </div>
   );
 }

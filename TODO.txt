@@ -1,10 +1,12 @@
-IOS FONTS AND EMOJIS.
+IOS FONTS AND EMOJIS. -- done 
 ONLY 4 FREE REWARD A DAY.
 OPEN/LAUNCH THE APP AND "TAP TO START" THE GAME SYSTEM. -- done 
 MAKE THE NAVBAR (LIQUID GLASS) FLOATING -- done 
-PLINKO COULD BE BETTER USING THE "LIQUIDGLASS" commit.
+PLINKO COULD BE BETTER USING THE "LIQUIDGLASS" commit. --
 No shake screen on loss with red vignette effect. -- done
 No haptic effects yet. -- done 
 Current UI is laggy. -- done
 Flappy bird could be immersive , instead of being in a window only. -- done
 scrolling isnt smooth. -- done
+
+Remove flappy bird. -- 
