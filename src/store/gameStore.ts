@@ -4,7 +4,7 @@
 
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
-export type GameId = 'coinflip' | 'higherlower' | 'plinko' | 'flappy';
+export type GameId = 'coinflip' | 'higherlower' | 'plinko' | 'scratch' | 'dice';
 
 const STORAGE_KEY = 'dopamine_box_v2';
 

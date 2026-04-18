@@ -5,7 +5,8 @@ import type { GameId } from '../store/gameStore';
 import CoinFlip from '../games/CoinFlip';
 import HigherLower from '../games/HigherLower';
 import Plinko from '../games/Plinko';
-import FlappyCoins from '../games/FlappyCoins';
+import ScratchCard from '../games/ScratchCard';
+import Dice from '../games/Dice';
 import ParticleEffect from './ParticleEffect';
 
 // ── Game metadata ──────────────────────────────────────────────
@@ -31,18 +32,25 @@ const GAME_META: Record<GameId, { label: string; emoji: string; color: string; s
     sub: 'Physics drop · 0.2×–2.0×',
     gradient: 'linear-gradient(135deg, rgba(0,255,148,0.15) 0%, rgba(0,204,119,0.08) 100%)',
   },
-  flappy: {
-    label: 'Flappy Coins',
-    emoji: '🐦',
-    color: '#FFD700',
-    sub: 'Collect coins · $5 each',
-    gradient: 'linear-gradient(135deg, rgba(255,215,0,0.15) 0%, rgba(255,140,0,0.08) 100%)',
+  scratch: {
+    label: 'Scratch Card',
+    emoji: '🎫',
+    color: '#C0C0C0',
+    sub: 'Scratch to win · Up to 100×',
+    gradient: 'linear-gradient(135deg, rgba(192,192,192,0.15) 0%, rgba(160,160,160,0.08) 100%)',
+  },
+  dice: {
+    label: 'Dice Roll',
+    emoji: '🎲',
+    color: '#6366f1',
+    sub: 'Set your odds · 1%-98%',
+    gradient: 'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(79,70,229,0.08) 100%)',
   },
 };
 
 // Generate a shuffled infinite sequence of games (no adjacent duplicates)
 function pickNextGame(last?: GameId): GameId {
-  const all: GameId[] = ['coinflip', 'higherlower', 'plinko', 'flappy'];
+  const all: GameId[] = ['coinflip', 'higherlower', 'plinko', 'scratch', 'dice'];
   const pool = last ? all.filter(g => g !== last) : all;
   return pool[Math.floor(Math.random() * pool.length)];
 }
@@ -60,7 +68,8 @@ function GameComponent({ gameId }: { gameId: GameId }) {
     case 'coinflip': return <CoinFlip />;
     case 'higherlower': return <HigherLower />;
     case 'plinko': return <Plinko />;
-    case 'flappy': return <FlappyCoins />;
+    case 'scratch': return <ScratchCard />;
+    case 'dice': return <Dice />;
   }
 }
 
@@ -125,9 +134,7 @@ function GameSlide({ gameId, isActive, isFirstEver }: { gameId: GameId; isActive
             transition={{ duration: 0.25 }}
             className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6"
             style={{
-              background: 'rgba(0,0,0,0.82)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
+              background: 'rgba(0,0,0,0.9)',
             }}
             onClick={() => {
               setStarted(true);
@@ -247,7 +254,7 @@ export default function GameReel() {
     setTimeout(() => setIsTransitioning(false), 350);
   }, [games.length, isTransitioning]);
 
-  // Touch handlers
+  // Touch handlers with better performance
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     startYRef.current = e.touches[0].clientY;
     startTimeRef.current = Date.now();
@@ -258,12 +265,7 @@ export default function GameReel() {
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!isDragging) return;
     const delta = e.touches[0].clientY - startYRef.current;
-    
-    // Use RAF to throttle updates for better performance
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      setDragOffset(delta);
-    });
+    setDragOffset(delta);
   }, [isDragging]);
 
   const handleTouchEnd = useCallback(() => {
@@ -293,12 +295,7 @@ export default function GameReel() {
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDragging) return;
     const delta = e.clientY - startYRef.current;
-    
-    // Use RAF to throttle updates for better performance
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      setDragOffset(delta);
-    });
+    setDragOffset(delta);
   }, [isDragging]);
 
   const handleMouseUp = useCallback(() => {
@@ -335,30 +332,24 @@ export default function GameReel() {
         }}
       >
         {/* Balance chip */}
-        <motion.div
-          animate={balancePulse ? { scale: [1, 1.12, 1] } : { scale: 1 }}
-          transition={{ duration: 0.3 }}
-          className="px-3 py-1.5 rounded-2xl flex items-center gap-1.5"
+        <div
+          className="px-3 py-1.5 rounded-2xl flex items-center gap-1.5 transition-transform"
           style={{
             background: 'rgba(255,215,0,0.15)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
             border: '1px solid rgba(255,215,0,0.35)',
             boxShadow: balancePulse ? '0 0 16px rgba(255,215,0,0.5), 0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.3)',
-            transform: 'translate3d(0, 0, 0)',
+            transform: balancePulse ? 'translate3d(0, 0, 0) scale(1.12)' : 'translate3d(0, 0, 0)',
           }}
         >
           <span className="text-yellow-400 text-sm">💰</span>
           <span className="font-black text-white text-sm">{formatCurrency(gameState.balance)}</span>
-        </motion.div>
+        </div>
 
         {/* Streak */}
         <div
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl"
           style={{
             background: 'rgba(255,107,107,0.15)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
             border: '1px solid rgba(255,107,107,0.3)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
             transform: 'translate3d(0, 0, 0)',
@@ -387,21 +378,13 @@ export default function GameReel() {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <motion.div
+        <div
           className="absolute left-0 right-0"
           style={{ 
             top: 0, 
-            willChange: isDragging ? 'transform' : 'auto',
-            transform: 'translate3d(0, 0, 0)'
+            transform: `translate3d(0, ${-(currentIndex * containerH) + (isDragging ? dragOffset * 0.4 : 0)}px, 0)`,
+            transition: isDragging ? 'none' : 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
           }}
-          animate={{
-            y: -(currentIndex * containerH) + (isDragging ? dragOffset * 0.4 : 0),
-          }}
-          transition={
-            isDragging
-              ? { type: 'tween', duration: 0 }
-              : { type: 'spring', stiffness: 300, damping: 35, mass: 0.8 }
-          }
         >
           {games.map((gameId, idx) => {
             // Only render slides near the current index for performance
@@ -424,7 +407,7 @@ export default function GameReel() {
               </div>
             );
           })}
-        </motion.div>
+        </div>
       </div>
 
       {/* ── Scroll indicator dots ── */}
@@ -460,14 +443,16 @@ export default function GameReel() {
           height: 80,
         }}
       >
-        <motion.div
-          animate={{ y: [0, -6, 0], opacity: [0.5, 0.9, 0.5] }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+        <div
           className="flex flex-col items-center gap-0.5"
+          style={{
+            animation: 'float 1.8s ease-in-out infinite',
+            opacity: 0.5,
+          }}
         >
           <div className="text-white/50 text-xs">swipe up for next game</div>
           <div className="text-white/40 text-lg">↑</div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

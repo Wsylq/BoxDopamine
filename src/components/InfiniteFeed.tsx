@@ -48,14 +48,24 @@ const GAME_CONFIGS: Array<{ id: GameId; emoji: string; label: string; sub: strin
     accent: '#00FF94',
   },
   {
-    id: 'flappy',
-    emoji: '🐦',
-    label: 'Flappy Coins',
-    sub: 'Collect coins · $5 each',
-    bg: 'linear-gradient(135deg, rgba(255,215,0,0.15) 0%, rgba(255,140,0,0.08) 100%)',
-    border: 'rgba(255,215,0,0.3)',
-    glow: 'rgba(255,215,0,0.2)',
-    accent: '#FFD700',
+    id: 'scratch',
+    emoji: '🎫',
+    label: 'Scratch Card',
+    sub: 'Scratch to win · Up to 100×',
+    bg: 'linear-gradient(135deg, rgba(192,192,192,0.12) 0%, rgba(160,160,160,0.08) 100%)',
+    border: 'rgba(192,192,192,0.25)',
+    glow: 'rgba(192,192,192,0.15)',
+    accent: '#C0C0C0',
+  },
+  {
+    id: 'dice',
+    emoji: '🎲',
+    label: 'Dice Roll',
+    sub: 'Set your odds · 1%-98%',
+    bg: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(79,70,229,0.08) 100%)',
+    border: 'rgba(99,102,241,0.25)',
+    glow: 'rgba(99,102,241,0.15)',
+    accent: '#6366f1',
   },
 ];
 
@@ -76,7 +86,7 @@ function uid() { return `card_${++cardCounter}`; }
 
 // Generate a shuffled sequence of game IDs with no adjacent duplicates
 function generateGameSequence(count: number): GameId[] {
-  const games: GameId[] = ['coinflip', 'higherlower', 'plinko', 'flappy'];
+  const games: GameId[] = ['coinflip', 'higherlower', 'plinko', 'scratch', 'dice'];
   const result: GameId[] = [];
   let last: GameId | null = null;
   for (let i = 0; i < count; i++) {
