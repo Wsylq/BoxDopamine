@@ -5,22 +5,39 @@
 import Peer, { DataConnection } from 'peerjs';
 
 type MessageHandler = (data: any, peerId: string) => void;
+type ConnectionHandler = () => void;
 
 class P2PService {
   private peer: Peer | null = null;
   private connections: Map<string, DataConnection> = new Map();
   private handlers: Set<MessageHandler> = new Set();
+  private connectionHandlers: Set<ConnectionHandler> = new Set();
   private isHost = false;
   public myId = '';
+  public username = '';
+
+  // Initialize username
+  initUsername() {
+    let username = localStorage.getItem('p2p_username');
+    if (!username) {
+      username = prompt('Choose a username (cannot be changed later):') || `Player${Math.floor(Math.random() * 9999)}`;
+      localStorage.setItem('p2p_username', username);
+    }
+    this.username = username;
+    return username;
+  }
+
+  getUsername() {
+    return this.username || this.initUsername();
+  }
 
   // Initialize as host or player
   init(isHost: boolean, hostId?: string) {
     this.isHost = isHost;
+    this.getUsername(); // Ensure username is set
     
-    // Create peer with custom ID for host, random for players
-    const peerId = isHost ? `host_${Date.now()}` : undefined;
-    
-    this.peer = new Peer(peerId, {
+    // Create peer
+    this.peer = new Peer({
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -35,7 +52,7 @@ class P2PService {
       
       // If player, connect to host
       if (!isHost && hostId) {
-        this.connectToHost(hostId);
+        setTimeout(() => this.connectToHost(hostId), 500);
       }
     });
 
@@ -48,6 +65,7 @@ class P2PService {
 
     this.peer.on('error', (err) => {
       console.error('P2P error:', err);
+      alert('Connection error. Please try again.');
     });
   }
 
@@ -55,6 +73,7 @@ class P2PService {
   private connectToHost(hostId: string) {
     if (!this.peer) return;
     
+    console.log('Connecting to host:', hostId);
     const conn = this.peer.connect(hostId, { reliable: true });
     this.setupConnection(conn);
   }
@@ -64,6 +83,7 @@ class P2PService {
     conn.on('open', () => {
       console.log('✅ Connected to:', conn.peer);
       this.connections.set(conn.peer, conn);
+      this.connectionHandlers.forEach(h => h());
     });
 
     conn.on('data', (data) => {
@@ -74,17 +94,21 @@ class P2PService {
       console.log('❌ Disconnected:', conn.peer);
       this.connections.delete(conn.peer);
     });
+
+    conn.on('error', (err) => {
+      console.error('Connection error:', err);
+    });
   }
 
   // Send message to specific peer or broadcast (host only)
   send(data: any, peerId?: string) {
     if (peerId) {
-      // Send to specific peer
       const conn = this.connections.get(peerId);
-      if (conn) conn.send(data);
+      if (conn && conn.open) conn.send(data);
     } else {
-      // Broadcast to all
-      this.connections.forEach(conn => conn.send(data));
+      this.connections.forEach(conn => {
+        if (conn.open) conn.send(data);
+      });
     }
   }
 
@@ -92,6 +116,12 @@ class P2PService {
   subscribe(handler: MessageHandler) {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
+  }
+
+  // Subscribe to connection events
+  onConnection(handler: ConnectionHandler) {
+    this.connectionHandlers.add(handler);
+    return () => this.connectionHandlers.delete(handler);
   }
 
   // Get connected peers

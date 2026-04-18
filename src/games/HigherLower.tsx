@@ -96,7 +96,7 @@ export default function HigherLower() {
   const isRed = (card: typeof currentCard) => card.suit === '♥' || card.suit === '♦';
 
   return (
-    <div className="flex flex-col items-center gap-5 px-4 py-6 h-full">
+    <div className="flex flex-col items-center gap-5 px-4 py-6 h-full" style={{ paddingBottom: 120 }}>
       {/* Red vignette on loss */}
       {showLossEffect && <div className="red-vignette" />}
       

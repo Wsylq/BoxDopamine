@@ -13,37 +13,19 @@ Remove flappy bird. -- done
 
 Minesweeper Multiplayer. -- DONE ✅
 
-MULTIPLAYER FEATURES ADDED:
-✅ Team Minesweeper game (duo & trio modes)
-✅ Turn-based gameplay with betting system
-✅ Dynamic multiplier (1x to 3x based on progress)
-✅ Cashout option anytime
-✅ Real-time chat during games
-✅ Friends system (add, invite, manage)
-✅ WebSocket server for real-time sync
-✅ Multiplayer & Friends tabs in navbar
-✅ Game lobby (create/join games)
-✅ Invite friends to games
+P2P MULTIPLAYER (WebRTC):
+✅ Direct peer-to-peer connection (no server needed)
+✅ Host creates room → shares Room ID
+✅ Players join with Room ID
+✅ Username system (set once, permanent)
+✅ Individual betting per player
 ✅ Waiting room with ready system
-✅ Game over with payout distribution
-
-FILES CREATED:
-- server/ (complete backend)
-  - src/index.ts (WebSocket server)
-  - src/gameLogic.ts (minesweeper logic)
-  - src/types.ts (shared types)
-  - package.json
-  - tsconfig.json
-- src/types/multiplayer.ts
-- src/services/multiplayerService.ts
-- src/components/multiplayer/
-  - MinesweeperGame.tsx
-  - MultiplayerLobby.tsx
-  - FriendsScreen.tsx
-- MULTIPLAYER_SETUP.md (full documentation)
-- start-multiplayer.sh / .bat (launcher scripts)
-- .env / .env.example
-
-UPDATED FILES:
-- src/App.tsx (added multiplayer & friends tabs)
-- README.md (added multiplayer section)
+✅ Turn-based minesweeper gameplay
+✅ Dynamic multiplier (1x → 3x)
+✅ Individual payouts based on bet × multiplier
+✅ Real-time chat
+✅ Friends system (save friends locally)
+✅ Direct invite from friends list
+✅ Fullscreen game (hides navbar)
+✅ Responsive on all Android devices
+✅ Fixed button overlap with floating navbar
