@@ -36,8 +36,10 @@ class P2PService {
     this.isHost = isHost;
     this.getUsername(); // Ensure username is set
     
-    // Create peer
-    this.peer = new Peer({
+    // Create peer with short custom ID for host
+    const peerId = isHost ? `H${Date.now().toString(36).slice(-6)}` : undefined;
+    
+    this.peer = new Peer(peerId, {
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },

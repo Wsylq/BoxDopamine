@@ -209,7 +209,7 @@ export default function Plinko() {
   }, [drawScene]);
 
   return (
-    <div className="flex flex-col items-center gap-4 px-4 py-4 h-full" style={{ paddingBottom: 120 }}>
+    <div className="flex flex-col items-center gap-4 px-4 py-4 h-full" style={{ paddingBottom: 'max(140px, env(safe-area-inset-bottom, 140px))' }}>
       {/* Red vignette on loss */}
       {showLossEffect && <div className="red-vignette" />}
       

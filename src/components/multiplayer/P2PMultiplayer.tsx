@@ -19,14 +19,19 @@ export default function P2PMultiplayer() {
   const handleHost = () => {
     setIsHost(true);
     p2pService.init(true);
+    setView('host'); // Show host view immediately
     
-    // Wait for peer ID
-    setTimeout(() => {
-      setHostId(p2pService.myId);
-      setView('host');
-      sounds.coin();
-      haptics.medium();
-    }, 1000);
+    // Wait for peer ID with retry
+    const checkId = () => {
+      if (p2pService.myId) {
+        setHostId(p2pService.myId);
+        sounds.coin();
+        haptics.medium();
+      } else {
+        setTimeout(checkId, 200);
+      }
+    };
+    setTimeout(checkId, 500);
   };
 
   const handleJoin = (id?: string) => {
@@ -171,44 +176,53 @@ export default function P2PMultiplayer() {
             }}
           >
             <div className="text-white font-bold mb-3">🎮 Hosting Game</div>
-            <div className="text-white/60 text-sm mb-3">Share this Room ID:</div>
             
-            <div
-              className="p-4 rounded-xl mb-3 break-all"
-              style={{
-                background: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.1)',
-              }}
-            >
-              <div className="text-white font-mono text-sm">{hostId}</div>
-            </div>
+            {!hostId ? (
+              <div className="text-white/60 text-sm text-center py-8">
+                Generating Room ID...
+              </div>
+            ) : (
+              <>
+                <div className="text-white/60 text-sm mb-3">Share this Room ID:</div>
+                
+                <div
+                  className="p-4 rounded-xl mb-3 break-all"
+                  style={{
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  <div className="text-white font-mono text-lg text-center">{hostId}</div>
+                </div>
 
-            <button
-              onClick={copyHostId}
-              className="w-full py-3 rounded-xl font-bold mb-3"
-              style={{
-                background: '#22c55e',
-                color: '#fff',
-              }}
-            >
-              📋 Copy Room ID
-            </button>
+                <button
+                  onClick={copyHostId}
+                  className="w-full py-3 rounded-xl font-bold mb-3"
+                  style={{
+                    background: '#22c55e',
+                    color: '#fff',
+                  }}
+                >
+                  📋 Copy Room ID
+                </button>
 
-            <div className="text-white/60 text-xs mb-3">
-              Players connected: {p2pService.getPeers().length}
-            </div>
+                <div className="text-white/60 text-xs mb-3">
+                  Players connected: {p2pService.getPeers().length}
+                </div>
 
-            {connected && (
-              <button
-                onClick={() => setView('game')}
-                className="w-full py-3 rounded-xl font-bold"
-                style={{
-                  background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
-                  color: '#000',
-                }}
-              >
-                Start Game
-              </button>
+                {connected && (
+                  <button
+                    onClick={() => setView('game')}
+                    className="w-full py-3 rounded-xl font-bold"
+                    style={{
+                      background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                      color: '#000',
+                    }}
+                  >
+                    Start Game
+                  </button>
+                )}
+              </>
             )}
 
             <button
