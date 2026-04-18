@@ -43,9 +43,16 @@ class P2PService {
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:global.stun.twilio.com:3478' }
+          { urls: 'stun:global.stun.twilio.com:3478' },
+          // Add TURN server for better connectivity
+          {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
         ]
-      }
+      },
+      debug: 2 // Enable debug logs
     });
 
     this.peer.on('open', (id) => {
@@ -54,7 +61,8 @@ class P2PService {
       
       // If player, connect to host
       if (!isHost && hostId) {
-        setTimeout(() => this.connectToHost(hostId), 500);
+        console.log('Attempting to connect to:', hostId);
+        setTimeout(() => this.connectToHost(hostId), 1000);
       }
     });
 

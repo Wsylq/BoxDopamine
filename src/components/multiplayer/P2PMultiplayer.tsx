@@ -36,20 +36,33 @@ export default function P2PMultiplayer() {
 
   const handleJoin = (id?: string) => {
     const roomId = id || joinId.trim();
-    if (!roomId) return;
+    if (!roomId) {
+      alert('Please enter a Room ID');
+      return;
+    }
     
+    console.log('Joining room:', roomId);
     setIsHost(false);
     p2pService.init(false, roomId);
     setView('game');
     sounds.click();
     haptics.light();
     
-    // Check connection
-    setTimeout(() => {
+    // Check connection with timeout
+    let attempts = 0;
+    const checkConnection = () => {
+      attempts++;
       if (p2pService.getPeers().length > 0) {
         setConnected(true);
+        console.log('Connected!');
+      } else if (attempts < 15) {
+        setTimeout(checkConnection, 1000);
+      } else {
+        alert('Connection failed. Make sure the Room ID is correct and the host is online.');
+        setView('menu');
       }
-    }, 2000);
+    };
+    setTimeout(checkConnection, 2000);
   };
 
   const copyHostId = () => {
@@ -69,7 +82,18 @@ export default function P2PMultiplayer() {
     const unsub = p2pService.subscribe(() => {
       setConnected(p2pService.getPeers().length > 0);
     });
-    return unsub;
+    
+    // Also listen for connection events
+    const connUnsub = p2pService.onConnection(() => {
+      setConnected(true);
+      sounds.coin();
+      haptics.medium();
+    });
+    
+    return () => {
+      unsub();
+      connUnsub();
+    };
   }, []);
 
   if (view === 'game') {

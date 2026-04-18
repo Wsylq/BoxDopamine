@@ -197,7 +197,10 @@ export default function App() {
 
       {/* ── Floating Liquid Glass Bottom Nav ── */}
       <div className="absolute bottom-0 left-0 right-0 flex justify-center z-50"
-        style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)', padding: '0 20px 20px' }}>
+        style={{ 
+          paddingBottom: 'max(20px, env(safe-area-inset-bottom))', 
+          padding: '0 20px max(20px, env(safe-area-inset-bottom))' 
+        }}>
         <motion.div
           className="flex items-center rounded-3xl"
           style={{

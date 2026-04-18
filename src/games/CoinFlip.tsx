@@ -68,7 +68,7 @@ export default function CoinFlip() {
   const safeBet = Math.min(bet, balance);
 
   return (
-    <div className="flex flex-col items-center gap-6 px-4 py-6 h-full" style={{ paddingBottom: 120 }}>
+    <div className="flex flex-col items-center gap-6 px-4 py-6 h-full" style={{ paddingBottom: 'max(140px, calc(env(safe-area-inset-bottom) + 100px))' }}>
       {/* Red vignette on loss */}
       {showLossEffect && <div className="red-vignette" />}
       

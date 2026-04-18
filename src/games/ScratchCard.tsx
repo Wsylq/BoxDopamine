@@ -197,7 +197,7 @@ export default function ScratchCard() {
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 px-4 py-4 h-full" style={{ paddingBottom: 120 }}>
+    <div className="flex flex-col items-center gap-4 px-4 py-4 h-full" style={{ paddingBottom: 'max(140px, calc(env(safe-area-inset-bottom) + 100px))' }}>
       {/* Red vignette on loss */}
       {showLossEffect && <div className="red-vignette" />}
       
