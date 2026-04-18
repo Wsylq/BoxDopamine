@@ -84,16 +84,17 @@ const TAUNT_TEXTS = [
 let cardCounter = 0;
 function uid() { return `card_${++cardCounter}`; }
 
-// Generate a shuffled sequence of game IDs with no adjacent duplicates
+// Generate a shuffled sequence of game IDs with no repeats within last 2 games
 function generateGameSequence(count: number): GameId[] {
   const games: GameId[] = ['coinflip', 'higherlower', 'plinko', 'scratch', 'dice'];
   const result: GameId[] = [];
-  let last: GameId | null = null;
   for (let i = 0; i < count; i++) {
-    const available = games.filter(g => g !== last);
+    const last = result[result.length - 1];
+    const secondLast = result[result.length - 2];
+    const excluded = [last, secondLast].filter(Boolean) as GameId[];
+    const available = games.filter(g => !excluded.includes(g));
     const pick = available[Math.floor(Math.random() * available.length)];
     result.push(pick);
-    last = pick;
   }
   return result;
 }

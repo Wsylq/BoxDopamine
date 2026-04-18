@@ -96,25 +96,30 @@ export default function ScratchCard() {
     const canvasX = (x - rect.left) * scaleX;
     const canvasY = (y - rect.top) * scaleY;
 
-    // Erase scratch area
+    // Erase scratch area with larger radius
     ctx.globalCompositeOperation = 'destination-out';
     ctx.beginPath();
-    ctx.arc(canvasX, canvasY, 20, 0, Math.PI * 2);
+    ctx.arc(canvasX, canvasY, 30, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
 
-    // Calculate scratch progress
+    // Calculate scratch progress - sample more frequently for accuracy
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     let transparent = 0;
-    for (let i = 3; i < pixels.length; i += 4) {
-      if (pixels[i] === 0) transparent++;
+    let total = 0;
+    
+    // Sample every 20 pixels (better balance of performance and accuracy)
+    for (let i = 3; i < pixels.length; i += 80) {
+      total++;
+      if (pixels[i] < 10) transparent++; // Only count fully transparent pixels
     }
-    const progress = (transparent / (pixels.length / 4)) * 100;
+    
+    const progress = (transparent / total) * 100;
     setScratchProgress(progress);
 
-    // Auto-reveal at 60%
-    if (progress > 60 && !revealed) {
+    // Auto-reveal at 40% (lower threshold for better UX)
+    if (progress > 40 && !revealed) {
       setRevealed(true);
       setPrize(prizeRef.current);
       

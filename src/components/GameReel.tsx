@@ -48,17 +48,20 @@ const GAME_META: Record<GameId, { label: string; emoji: string; color: string; s
   },
 };
 
-// Generate a shuffled infinite sequence of games (no adjacent duplicates)
-function pickNextGame(last?: GameId): GameId {
+// Generate a shuffled infinite sequence of games (no repeats within last 2 games)
+function pickNextGame(last?: GameId, secondLast?: GameId): GameId {
   const all: GameId[] = ['coinflip', 'higherlower', 'plinko', 'scratch', 'dice'];
-  const pool = last ? all.filter(g => g !== last) : all;
+  const excluded = [last, secondLast].filter(Boolean) as GameId[];
+  const pool = all.filter(g => !excluded.includes(g));
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
 function generateGameList(count: number): GameId[] {
   const list: GameId[] = [];
   for (let i = 0; i < count; i++) {
-    list.push(pickNextGame(list[list.length - 1]));
+    const last = list[list.length - 1];
+    const secondLast = list[list.length - 2];
+    list.push(pickNextGame(last, secondLast));
   }
   return list;
 }
@@ -241,7 +244,17 @@ export default function GameReel() {
   // Append more games when near end
   useEffect(() => {
     if (currentIndex >= games.length - 3) {
-      setGames(prev => [...prev, ...generateGameList(6)]);
+      setGames(prev => {
+        const last = prev[prev.length - 1];
+        const secondLast = prev[prev.length - 2];
+        const newGames: GameId[] = [];
+        for (let i = 0; i < 6; i++) {
+          const prevLast = i === 0 ? last : newGames[newGames.length - 1];
+          const prevSecondLast = i === 0 ? secondLast : i === 1 ? last : newGames[newGames.length - 2];
+          newGames.push(pickNextGame(prevLast, prevSecondLast));
+        }
+        return [...prev, ...newGames];
+      });
     }
   }, [currentIndex, games.length]);
 
