@@ -1,5 +1,50 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'SF Pro Text', 'SF Pro Display', 'Apple Color Emoji', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'SF Pro Display', 'SF Pro Text', 'Apple Color Emoji', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* San Francisco Pro Font */
+@font-face {
+  font-family: 'SF Pro Text';
+  src: url('/fonts/SF-Pro-Text-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Text';
+  src: url('/fonts/SF-Pro-Text-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('/fonts/SF-Pro-Display-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('/fonts/SF-Pro-Display-Black.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Apple Color Emoji */
+@font-face {
+  font-family: 'Apple Color Emoji';
+  src: url('/fonts/AppleColorEmoji-Windows.ttf') format('truetype');
+  font-display: swap;
+}
+
 :root {
   --dopamine-gold: #FFD700;
   --dopamine-orange: #FF8C00;
@@ -52,8 +97,7 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-               'Helvetica Neue', 'Inter', 'Segoe UI', Roboto, sans-serif;
+  font-family: 'SF Pro Text', 'SF Pro Display', 'Apple Color Emoji', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: white;
