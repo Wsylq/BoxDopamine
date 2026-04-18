@@ -78,14 +78,14 @@ function GameSlide({ gameId, isActive, isFirstEver }: { gameId: GameId; isActive
 
   return (
     <div
-      className="w-full h-full flex flex-col relative overflow-hidden"
+      className="w-full h-full flex flex-col relative overflow-hidden optimized-scroll"
       style={{
         background: '#080810',
       }}
     >
       {/* Game header pill */}
       <div
-        className="shrink-0 flex items-center gap-3 px-4 pt-3 pb-2"
+        className="shrink-0 flex items-center gap-3 px-4 pt-3 pb-2 optimized-scroll"
         style={{
           background: meta.gradient,
           borderBottom: `1px solid ${meta.color}22`,
@@ -185,8 +185,8 @@ function GameSlide({ gameId, isActive, isFirstEver }: { gameId: GameId; isActive
       </AnimatePresence>
 
       {/* Game content */}
-      <div className="flex-1 overflow-y-auto scroll-smooth" style={{ overscrollBehavior: 'contain' }}>
-        <GameComponent gameId={gameId} />
+      <div className="flex-1 overflow-y-auto optimized-scroll" style={{ overscrollBehavior: 'contain' }}>
+        {isActive && <GameComponent gameId={gameId} />}
       </div>
     </div>
   );
@@ -310,21 +310,22 @@ export default function GameReel() {
 
       {/* ── Floating Stats (No Background) ── */}
       <div
-        className="absolute top-0 left-0 right-0 z-50 flex items-center justify-end gap-3 px-4"
+        className="absolute top-0 left-0 right-0 z-50 flex items-center justify-end gap-3 px-4 optimized-scroll"
         style={{
           paddingTop: 'max(env(safe-area-inset-top), 12px)',
           paddingBottom: 12,
+          willChange: balancePulse ? 'transform' : 'auto',
         }}
       >
         {/* Balance chip */}
         <motion.div
           animate={balancePulse ? { scale: [1, 1.12, 1] } : { scale: 1 }}
           transition={{ duration: 0.3 }}
-          className="px-3 py-1.5 rounded-2xl flex items-center gap-1.5"
+          className="px-3 py-1.5 rounded-2xl flex items-center gap-1.5 optimized-scroll"
           style={{
             background: 'rgba(255,215,0,0.15)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             border: '1px solid rgba(255,215,0,0.35)',
             boxShadow: balancePulse ? '0 0 16px rgba(255,215,0,0.5), 0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.3)',
           }}
@@ -335,11 +336,11 @@ export default function GameReel() {
 
         {/* Streak */}
         <div
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl optimized-scroll"
           style={{
             background: 'rgba(255,107,107,0.15)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
             border: '1px solid rgba(255,107,107,0.3)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
           }}
@@ -353,7 +354,7 @@ export default function GameReel() {
       {/* ── Reel stack ── */}
       <div
         ref={containerRef}
-        className="flex-1 relative overflow-hidden"
+        className="flex-1 relative overflow-hidden optimized-scroll"
         style={{ userSelect: 'none', cursor: isDragging ? 'grabbing' : 'grab' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -364,8 +365,8 @@ export default function GameReel() {
         onMouseLeave={handleMouseUp}
       >
         <motion.div
-          className="absolute left-0 right-0"
-          style={{ top: 0 }}
+          className="absolute left-0 right-0 optimized-scroll"
+          style={{ top: 0, willChange: isDragging ? 'transform' : 'auto' }}
           animate={{
             y: -(currentIndex * containerH) + (isDragging ? dragOffset * 0.4 : 0),
           }}
@@ -375,14 +376,22 @@ export default function GameReel() {
               : { type: 'spring', stiffness: 300, damping: 35, mass: 0.8 }
           }
         >
-          {games.map((gameId, idx) => (
-            <div
-              key={`${gameId}-${idx}`}
-              style={{ height: containerH, overflow: 'hidden' }}
-            >
-              <GameSlide gameId={gameId} isActive={idx === currentIndex} isFirstEver={idx === 0} />
-            </div>
-          ))}
+          {games.map((gameId, idx) => {
+            // Only render slides near the current index for performance
+            const isNearby = Math.abs(idx - currentIndex) <= 2;
+            return (
+              <div
+                key={`${gameId}-${idx}`}
+                style={{ height: containerH, overflow: 'hidden' }}
+              >
+                {isNearby ? (
+                  <GameSlide gameId={gameId} isActive={idx === currentIndex} isFirstEver={idx === 0} />
+                ) : (
+                  <div className="w-full h-full" style={{ background: '#080810' }} />
+                )}
+              </div>
+            );
+          })}
         </motion.div>
       </div>
 

@@ -6,3 +6,5 @@ PLINKO COULD BE BETTER USING THE "LIQUIDGLASS" commit.
 No shake screen on loss with red vignette effect.
 No haptic effects yet.
 Current UI is laggy.
+Flappy bird could be immersive , instead of being in a window only. -- done
+scrolling isnt smooth.

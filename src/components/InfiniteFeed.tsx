@@ -194,10 +194,11 @@ export default function InfiniteFeed({ onGameOpen }: Props) {
       {cards.map((card, idx) => (
         <motion.div
           key={card.id}
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-20px' }}
-          transition={{ duration: 0.35, ease: 'easeOut', delay: Math.min(idx * 0.02, 0.1) }}
+          viewport={{ once: true, margin: '-50px', amount: 0.3 }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
+          className="optimized-scroll"
         >
           <FeedCardView
             card={card}
@@ -240,18 +241,19 @@ function GameCard({ card, onOpen }: { card: FeedCard; onOpen: () => void }) {
 
   return (
     <motion.button
-      whileTap={{ scale: 0.97 }}
+      whileTap={{ scale: 0.98 }}
       onPointerDown={() => setPressed(true)}
       onPointerUp={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
       onClick={() => { sounds.click(); haptics.medium(); onOpen(); }}
-      className="w-full rounded-3xl p-5 flex items-center gap-4 text-left transition-all"
+      className="w-full rounded-3xl p-5 flex items-center gap-4 text-left transition-all optimized-scroll"
       style={{
         background: cfg.bg,
         border: `1px solid ${cfg.border}`,
         boxShadow: pressed
           ? `0 2px 12px ${cfg.glow}`
           : `0 6px 28px ${cfg.glow}, inset 0 1px 0 rgba(255,255,255,0.06)`,
+        willChange: pressed ? 'transform' : 'auto',
       }}
     >
       {/* Icon */}
