@@ -112,22 +112,30 @@ jobs:
         working-directory: android
         run: |
           printf '\nkotlin.version=1.8.22\nandroid.useAndroidX=true\nandroid.enableJetifier=true\norg.gradle.jvmargs=-Xmx2048m\n' >> gradle.properties
-
-          if ! grep -q "resolutionStrategy" build.gradle; then
-            cat >> build.gradle << 'BUILDEOF'
-
-subprojects {
-    configurations.all {
-        resolutionStrategy {
-            force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
-            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22"
-            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
-            force "org.jetbrains.kotlin:kotlin-stdlib-common:1.8.22"
-        }
-    }
-}
-BUILDEOF
-          fi
+          python3 - << 'PYEOF'
+          import os
+          build_gradle = 'build.gradle'
+          with open(build_gradle, 'r') as f:
+              content = f.read()
+          if 'resolutionStrategy' not in content:
+              patch = """
+          subprojects {
+              configurations.all {
+                  resolutionStrategy {
+                      force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+                      force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+                      force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+                      force 'org.jetbrains.kotlin:kotlin-stdlib-common:1.8.22'
+                  }
+              }
+          }
+          """
+              with open(build_gradle, 'a') as f:
+                  f.write(patch)
+              print('resolutionStrategy block added.')
+          else:
+              print('resolutionStrategy already present, skipping.')
+          PYEOF
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
