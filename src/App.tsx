@@ -187,9 +187,7 @@ export default function App() {
         <motion.div
           className="flex items-center rounded-3xl"
           style={{
-            background: 'rgba(255,255,255,0.08)',
-            backdropFilter: 'blur(32px) saturate(200%)',
-            WebkitBackdropFilter: 'blur(32px) saturate(200%)',
+            background: 'rgba(0,0,0,0.85)',
             border: '1px solid rgba(255,255,255,0.15)',
             boxShadow: '0 8px 40px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.1) inset, 0 -1px 0 rgba(0,0,0,0.2) inset',
           }}

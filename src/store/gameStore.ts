@@ -155,7 +155,6 @@ export const sounds = {
 };
 
 // ── Haptics ─────────────────────────────────────────────────────────────────
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 export const haptics = {
   async light() {

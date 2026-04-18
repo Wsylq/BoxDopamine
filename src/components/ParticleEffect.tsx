@@ -7,7 +7,7 @@ interface Particle {
   vy: number;
   life: number;
   maxLife: number;
-  color: string;
+  colorIndex: number;
   size: number;
 }
 
@@ -32,12 +32,13 @@ export default function ParticleEffect({ active, originX = 0.5, originY = 0.15 }
 
     const W = canvas.width = window.innerWidth;
     const H = canvas.height = window.innerHeight;
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d', { alpha: true })!;
 
     const startX = W * originX;
     const startY = H * originY;
 
-    for (let i = 0; i < 80; i++) {
+    // Reduced from 80 to 40 particles
+    for (let i = 0; i < 40; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 2 + Math.random() * 8;
       particlesRef.current.push({
@@ -47,7 +48,7 @@ export default function ParticleEffect({ active, originX = 0.5, originY = 0.15 }
         vy: Math.sin(angle) * speed - 3,
         life: 1,
         maxLife: 60 + Math.random() * 60,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        colorIndex: Math.floor(Math.random() * COLORS.length),
         size: 3 + Math.random() * 6,
       });
     }
@@ -63,7 +64,7 @@ export default function ParticleEffect({ active, originX = 0.5, originY = 0.15 }
         p.life -= 1 / p.maxLife;
 
         ctx.globalAlpha = p.life;
-        ctx.fillStyle = p.color;
+        ctx.fillStyle = COLORS[p.colorIndex];
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
         ctx.fill();

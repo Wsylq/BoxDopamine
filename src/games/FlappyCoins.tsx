@@ -26,6 +26,11 @@ export default function FlappyCoins() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
+  // Gradient caches to avoid recreating every frame
+  const bgGradientRef = useRef<CanvasGradient | null>(null);
+  const pipeGradientsRef = useRef<Record<string, CanvasGradient>>({});
+  const coinGlowRef = useRef<Record<string, CanvasGradient>>({});
+  
   const stateRef = useRef({
     birdY: 0,
     birdV: 0,
@@ -86,11 +91,14 @@ export default function FlappyCoins() {
 
     ctx.clearRect(0, 0, W, H);
 
-    // Background
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#0a0a1a');
-    grad.addColorStop(1, '#0d1b2a');
-    ctx.fillStyle = grad;
+    // Background - cached gradient
+    if (!bgGradientRef.current) {
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, '#0a0a1a');
+      grad.addColorStop(1, '#0d1b2a');
+      bgGradientRef.current = grad;
+    }
+    ctx.fillStyle = bgGradientRef.current;
     ctx.fillRect(0, 0, W, H);
 
     if (phaseRef.current === 'idle') {
@@ -105,20 +113,24 @@ export default function FlappyCoins() {
       return;
     }
 
-    // Pipes
+    // Pipes - cached gradients
     for (const pipe of s.pipes) {
-      const pipeGrad = ctx.createLinearGradient(pipe.x, 0, pipe.x + PIPE_W, 0);
-      pipeGrad.addColorStop(0, '#2d6a4f');
-      pipeGrad.addColorStop(0.5, '#40916c');
-      pipeGrad.addColorStop(1, '#1b4332');
-      ctx.fillStyle = pipeGrad;
+      const pipeKey = `pipe_${pipe.x}`;
+      if (!pipeGradientsRef.current[pipeKey]) {
+        const pipeGrad = ctx.createLinearGradient(pipe.x, 0, pipe.x + PIPE_W, 0);
+        pipeGrad.addColorStop(0, '#2d6a4f');
+        pipeGrad.addColorStop(0.5, '#40916c');
+        pipeGrad.addColorStop(1, '#1b4332');
+        pipeGradientsRef.current[pipeKey] = pipeGrad;
+      }
+      ctx.fillStyle = pipeGradientsRef.current[pipeKey];
       ctx.beginPath();
       (ctx as any).roundRect(pipe.x, 0, PIPE_W, pipe.topH, [0, 0, 8, 8]);
       ctx.fill();
       ctx.fillRect(pipe.x - 4, pipe.topH - 20, PIPE_W + 8, 20);
 
       const botY = pipe.topH + PIPE_GAP;
-      ctx.fillStyle = pipeGrad;
+      ctx.fillStyle = pipeGradientsRef.current[pipeKey];
       ctx.beginPath();
       (ctx as any).roundRect(pipe.x, botY, PIPE_W, H - botY, [8, 8, 0, 0]);
       ctx.fill();
@@ -127,11 +139,17 @@ export default function FlappyCoins() {
       if (!pipe.coinCollected && pipe.coinY !== undefined) {
         const cx = pipe.x + PIPE_W / 2;
         const cy = pipe.coinY;
-        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, COIN_R);
-        glow.addColorStop(0, '#FFD700');
-        glow.addColorStop(0.6, '#FFA500');
-        glow.addColorStop(1, 'rgba(255,165,0,0)');
-        ctx.fillStyle = glow;
+        
+        // Cached coin glow gradient
+        const coinKey = `coin_${cx}_${cy}`;
+        if (!coinGlowRef.current[coinKey]) {
+          const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, COIN_R);
+          glow.addColorStop(0, '#FFD700');
+          glow.addColorStop(0.6, '#FFA500');
+          glow.addColorStop(1, 'rgba(255,165,0,0)');
+          coinGlowRef.current[coinKey] = glow;
+        }
+        ctx.fillStyle = coinGlowRef.current[coinKey];
         ctx.beginPath();
         ctx.arc(cx, cy, COIN_R + 4, 0, Math.PI * 2);
         ctx.fill();

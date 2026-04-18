@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatCurrency, getState, addBalance, sounds, haptics } from '../store/gameStore';
 import type { GameId } from '../store/gameStore';
@@ -192,13 +192,13 @@ export default function InfiniteFeed({ onGameOpen }: Props) {
   return (
     <div className="flex flex-col gap-4 px-4 py-4">
       {cards.map((card, idx) => (
-        <motion.div
+        <div
           key={card.id}
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px', amount: 0.3 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          style={{ transform: 'translate3d(0, 0, 0)' }}
+          className="fade-in"
+          style={{ 
+            transform: 'translate3d(0, 0, 0)',
+            animationDelay: `${idx * 0.02}s`
+          }}
         >
           <FeedCardView
             card={card}
@@ -206,7 +206,7 @@ export default function InfiniteFeed({ onGameOpen }: Props) {
             onGameOpen={onGameOpen}
             onClaim={handleClaim}
           />
-        </motion.div>
+        </div>
       ))}
 
       <div ref={loaderRef} className="flex items-center justify-center py-6 text-white/20 text-sm gap-2">
@@ -227,21 +227,20 @@ interface CardProps {
   onClaim: (card: FeedCard) => void;
 }
 
-function FeedCardView({ card, claimed, onGameOpen, onClaim }: CardProps) {
+const FeedCardView = memo(function FeedCardView({ card, claimed, onGameOpen, onClaim }: CardProps) {
   if (card.type === 'game') return <GameCard card={card} onOpen={() => onGameOpen(card.game!)} />;
   if (card.type === 'reward') return <RewardCard card={card} claimed={claimed} onClaim={() => onClaim(card)} />;
   if (card.type === 'taunt') return <TauntCard card={card} />;
   if (card.type === 'milestone') return <MilestoneCard card={card} />;
   return null;
-}
+});
 
-function GameCard({ card, onOpen }: { card: FeedCard; onOpen: () => void }) {
+const GameCard = memo(function GameCard({ card, onOpen }: { card: FeedCard; onOpen: () => void }) {
   const cfg = GAME_CONFIGS.find(g => g.id === card.game)!;
   const [pressed, setPressed] = useState(false);
 
   return (
-    <motion.button
-      whileTap={{ scale: 0.98 }}
+    <button
       onPointerDown={() => setPressed(true)}
       onPointerUp={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
@@ -253,8 +252,8 @@ function GameCard({ card, onOpen }: { card: FeedCard; onOpen: () => void }) {
         boxShadow: pressed
           ? `0 2px 12px ${cfg.glow}`
           : `0 6px 28px ${cfg.glow}, inset 0 1px 0 rgba(255,255,255,0.06)`,
-        willChange: pressed ? 'transform' : 'auto',
-        transform: 'translate3d(0, 0, 0)',
+        transform: pressed ? 'translate3d(0, 0, 0) scale(0.98)' : 'translate3d(0, 0, 0)',
+        transition: 'all 0.15s ease',
       }}
     >
       {/* Icon */}
@@ -291,11 +290,11 @@ function GameCard({ card, onOpen }: { card: FeedCard; onOpen: () => void }) {
       >
         ›
       </div>
-    </motion.button>
+    </button>
   );
-}
+});
 
-function RewardCard({ card, claimed, onClaim }: { card: FeedCard; claimed: boolean; onClaim: () => void }) {
+const RewardCard = memo(function RewardCard({ card, claimed, onClaim }: { card: FeedCard; claimed: boolean; onClaim: () => void }) {
   return (
     <div
       className="w-full rounded-3xl p-5 flex items-center gap-4"
@@ -316,34 +315,31 @@ function RewardCard({ card, claimed, onClaim }: { card: FeedCard; claimed: boole
       </div>
       <AnimatePresence mode="wait">
         {claimed ? (
-          <motion.div
+          <div
             key="claimed"
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className="shrink-0 text-green-400 font-bold text-sm"
+            className="shrink-0 text-green-400 font-bold text-sm fade-in"
           >
             ✓ Claimed
-          </motion.div>
+          </div>
         ) : (
-          <motion.button
+          <button
             key="claim"
-            whileTap={{ scale: 0.95 }}
             onClick={onClaim}
-            className="shrink-0 px-4 py-2 rounded-2xl font-bold text-black text-sm"
+            className="shrink-0 px-4 py-2 rounded-2xl font-bold text-black text-sm transition-transform active:scale-95"
             style={{
               background: 'linear-gradient(135deg,#22c55e,#16a34a)',
               boxShadow: '0 4px 16px rgba(34,197,94,0.4)',
             }}
           >
             Claim
-          </motion.button>
+          </button>
         )}
       </AnimatePresence>
     </div>
   );
-}
+});
 
-function TauntCard({ card }: { card: FeedCard }) {
+const TauntCard = memo(function TauntCard({ card }: { card: FeedCard }) {
   return (
     <div
       className="w-full rounded-3xl p-5 text-center"
@@ -358,9 +354,9 @@ function TauntCard({ card }: { card: FeedCard }) {
       <div className="text-white/30 text-xs mt-1">Keep scrolling...</div>
     </div>
   );
-}
+});
 
-function MilestoneCard({ card }: { card: FeedCard }) {
+const MilestoneCard = memo(function MilestoneCard({ card }: { card: FeedCard }) {
   const { balance } = getState();
   const goal = 10_000_000;
   const pct = Math.min(100, (balance / goal) * 100);
@@ -383,13 +379,12 @@ function MilestoneCard({ card }: { card: FeedCard }) {
       </div>
       {/* Progress bar */}
       <div className="h-3 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-        <motion.div
-          initial={{ width: 0 }}
-          whileInView={{ width: `${Math.max(pct, 0.5)}%` }}
-          viewport={{ once: true }}
-          transition={{ duration: 1, ease: 'easeOut' }}
-          className="h-full rounded-full"
-          style={{ background: 'linear-gradient(90deg, #FFD700, #FF8C00)' }}
+        <div
+          className="h-full rounded-full transition-all duration-1000 ease-out"
+          style={{ 
+            background: 'linear-gradient(90deg, #FFD700, #FF8C00)',
+            width: `${Math.max(pct, 0.5)}%`
+          }}
         />
       </div>
       <div className="flex justify-between mt-2 text-xs text-white/40">
@@ -398,4 +393,4 @@ function MilestoneCard({ card }: { card: FeedCard }) {
       </div>
     </div>
   );
-}
+});
