@@ -19,6 +19,7 @@ export default function Plinko() {
   const [lastPath, setLastPath] = useState<PlinkoPath | null>(null);
   const [ballPos, setBallPos] = useState<{ x: number; y: number } | null>(null);
   const [highlightSlot, setHighlightSlot] = useState<number | null>(null);
+  const [showLossEffect, setShowLossEffect] = useState(false);
 
   const { balance } = getState();
   const safeBet = Math.min(bet, balance);
@@ -78,7 +79,12 @@ export default function Plinko() {
           setBallPos(null);
           setDropping(false);
           if (win > safeBet) { sounds.win(); haptics.win(); }
-          else if (win === 0) { sounds.lose(); haptics.lose(); }
+          else if (win === 0) { 
+            sounds.lose(); 
+            haptics.lose();
+            setShowLossEffect(true);
+            setTimeout(() => setShowLossEffect(false), 600);
+          }
           else sounds.coin();
         }, 600);
         return;
@@ -109,6 +115,9 @@ export default function Plinko() {
 
   return (
     <div className="flex flex-col items-center gap-4 px-4 py-4 h-full">
+      {/* Red vignette on loss */}
+      {showLossEffect && <div className="red-vignette" />}
+      
       {/* Canvas */}
       <div className="relative" style={{ width: CANVAS_W, height: CANVAS_H }}>
         <svg width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', top: 0, left: 0 }}>
@@ -175,7 +184,7 @@ export default function Plinko() {
 
       {/* Result */}
       {lastPath && !dropping && (
-        <div className="text-center">
+        <div className={`text-center ${lastPath.win === 0 ? 'shake-intense' : ''}`}>
           <div className={`text-2xl font-black ${lastPath.win > safeBet ? 'text-green-400' : lastPath.win === 0 ? 'text-red-400' : 'text-yellow-400'}`}>
             {lastPath.win > safeBet ? `🎉 +${formatCurrency(lastPath.win - safeBet)}` : lastPath.win === 0 ? '💀 Miss!' : `${lastPath.multiplier}x`}
           </div>

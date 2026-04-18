@@ -37,6 +37,7 @@ export default function FlappyCoins() {
   });
   const animRef = useRef<number>(0);
   const phaseRef = useRef<Phase>('idle');
+  const inputQueueRef = useRef<boolean>(false);
 
   const [phase, setPhase] = useState<Phase>('idle');
   const [score, setScore] = useState(0);
@@ -45,6 +46,7 @@ export default function FlappyCoins() {
     try { return parseInt(localStorage.getItem('flappy_hs') || '0'); } catch { return 0; }
   });
   const [showWoohoo, setShowWoohoo] = useState(false);
+  const [showLossEffect, setShowLossEffect] = useState(false);
   const woohooRef = useRef(false);
 
   // Update canvas dimensions on mount and resize
@@ -193,6 +195,12 @@ export default function FlappyCoins() {
     const H = dimensions.height;
     s.frame++;
 
+    // Process queued input immediately
+    if (inputQueueRef.current) {
+      s.birdV = FLAP_V;
+      inputQueueRef.current = false;
+    }
+
     s.birdV += GRAVITY;
     s.birdY += s.birdV;
 
@@ -247,6 +255,8 @@ export default function FlappyCoins() {
     if (hit) {
       phaseRef.current = 'dead';
       setPhase('dead');
+      setShowLossEffect(true);
+      setTimeout(() => setShowLossEffect(false), 600);
       sounds.lose();
       haptics.lose();
       if (s.score > highScore) {
@@ -259,13 +269,13 @@ export default function FlappyCoins() {
 
     draw();
     animRef.current = requestAnimationFrame(gameLoop);
-  }, [draw, highScore, dimensions, spawnPipe]);
+  }, [draw, highScore, dimensions.height, spawnPipe]);
 
   useEffect(() => {
     draw();
   }, [draw]);
 
-  function flap() {
+  function handleTap() {
     const H = dimensions.height;
     const W = dimensions.width;
     const birdX = W * 0.25;
@@ -280,7 +290,7 @@ export default function FlappyCoins() {
       animRef.current = requestAnimationFrame(gameLoop);
       haptics.medium();
     } else if (phaseRef.current === 'playing') {
-      stateRef.current.birdV = FLAP_V;
+      inputQueueRef.current = true;
       sounds.flip();
       haptics.light();
     } else if (phaseRef.current === 'dead') {
@@ -291,19 +301,27 @@ export default function FlappyCoins() {
     }
   }
 
-  useEffect(() => {
-    return () => { cancelAnimationFrame(animRef.current); };
-  }, []);
-
   return (
-    <div ref={containerRef} className="absolute inset-0 flex flex-col" onClick={flap}>
+    <div 
+      ref={containerRef} 
+      className="absolute inset-0 flex flex-col" 
+      style={{ touchAction: 'none', cursor: 'pointer' }}
+      onClick={handleTap}
+      onTouchStart={(e) => {
+        e.preventDefault();
+        handleTap();
+      }}
+    >
       <canvas
         ref={canvasRef}
         width={dimensions.width}
         height={dimensions.height}
         className="absolute inset-0"
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: 'pointer', touchAction: 'none' }}
       />
+
+      {/* Red vignette on loss */}
+      {showLossEffect && <div className="red-vignette" />}
 
       {/* Floating HUD - Top */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-4">
@@ -390,7 +408,7 @@ export default function FlappyCoins() {
           className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20"
           style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
         >
-          <div className="text-6xl font-black text-red-400" style={{ textShadow: '0 0 30px #ef4444' }}>
+          <div className="shake-intense text-6xl font-black text-red-400" style={{ textShadow: '0 0 30px #ef4444' }}>
             💀 DEAD
           </div>
           <div className="flex gap-6 mt-4">
@@ -410,7 +428,7 @@ export default function FlappyCoins() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              flap();
+              handleTap();
             }}
             className="mt-4 px-8 py-3 rounded-2xl font-black text-black text-lg"
             style={{

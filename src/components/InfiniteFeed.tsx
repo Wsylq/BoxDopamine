@@ -197,8 +197,8 @@ export default function InfiniteFeed({ onGameOpen }: Props) {
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-50px', amount: 0.3 }}
-          transition={{ duration: 0.25, ease: 'easeOut' }}
-          className="optimized-scroll"
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          style={{ transform: 'translate3d(0, 0, 0)' }}
         >
           <FeedCardView
             card={card}
@@ -246,7 +246,7 @@ function GameCard({ card, onOpen }: { card: FeedCard; onOpen: () => void }) {
       onPointerUp={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
       onClick={() => { sounds.click(); haptics.medium(); onOpen(); }}
-      className="w-full rounded-3xl p-5 flex items-center gap-4 text-left transition-all optimized-scroll"
+      className="w-full rounded-3xl p-5 flex items-center gap-4 text-left transition-all"
       style={{
         background: cfg.bg,
         border: `1px solid ${cfg.border}`,
@@ -254,6 +254,7 @@ function GameCard({ card, onOpen }: { card: FeedCard; onOpen: () => void }) {
           ? `0 2px 12px ${cfg.glow}`
           : `0 6px 28px ${cfg.glow}, inset 0 1px 0 rgba(255,255,255,0.06)`,
         willChange: pressed ? 'transform' : 'auto',
+        transform: 'translate3d(0, 0, 0)',
       }}
     >
       {/* Icon */}

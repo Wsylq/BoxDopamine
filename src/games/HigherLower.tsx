@@ -26,6 +26,7 @@ export default function HigherLower() {
   const [streak, setStreak] = useState(0);
   const [pot, setPot] = useState(0);
   const [showNext, setShowNext] = useState(false);
+  const [showLossEffect, setShowLossEffect] = useState(false);
 
   const { balance } = getState();
   const currentPot = streak === 0 ? Math.min(bet, balance) : pot;
@@ -69,6 +70,8 @@ export default function HigherLower() {
         setPhase('lost');
         sounds.lose();
         haptics.lose();
+        setShowLossEffect(true);
+        setTimeout(() => setShowLossEffect(false), 600);
       }
     }, 800);
   }
@@ -94,6 +97,9 @@ export default function HigherLower() {
 
   return (
     <div className="flex flex-col items-center gap-5 px-4 py-6 h-full">
+      {/* Red vignette on loss */}
+      {showLossEffect && <div className="red-vignette" />}
+      
       {/* Streak / Multiplier bar */}
       <div className="flex gap-3 w-full justify-center">
         {MULTIPLIERS.map((m, i) => (
@@ -199,7 +205,7 @@ export default function HigherLower() {
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="text-center"
+            className="text-center shake-intense"
           >
             <div className="text-3xl font-black text-red-400">💀 WRONG!</div>
             <div className="text-white/60 text-sm">Lost everything</div>

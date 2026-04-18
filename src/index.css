@@ -22,12 +22,23 @@
 }
 
 .optimized-scroll {
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  perspective: 1000px;
-  -webkit-perspective: 1000px;
+}
+
+/* Reduce motion for better performance */
+@media (prefers-reduced-motion: no-preference) {
+  .smooth-transform {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* Hardware acceleration for specific elements */
+.hw-accelerated {
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
 }
 
 html, body, #root {
@@ -79,9 +90,21 @@ body {
 }
 
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
-  20%, 40%, 60%, 80% { transform: translateX(8px); }
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  10%, 30%, 50%, 70%, 90% { transform: translate3d(-8px, 0, 0); }
+  20%, 40%, 60%, 80% { transform: translate3d(8px, 0, 0); }
+}
+
+@keyframes shake-intense {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  10%, 30%, 50%, 70%, 90% { transform: translate3d(-12px, 0, 0); }
+  20%, 40%, 60%, 80% { transform: translate3d(12px, 0, 0); }
+}
+
+@keyframes vignette-pulse {
+  0% { opacity: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 @keyframes win-pulse {
@@ -132,9 +155,19 @@ canvas {
 }
 
 .shake { animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+.shake-intense { animation: shake-intense 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
 .win-pulse { animation: win-pulse 0.4s ease-in-out; }
 .slide-up { animation: slide-up 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .fade-in { animation: fade-in 0.3s ease-in-out; }
+
+.red-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 20%, rgba(239, 68, 68, 0.4) 100%);
+  animation: vignette-pulse 0.6s ease-in-out;
+  z-index: 9999;
+}
 
 .gold-text {
   background: linear-gradient(135deg, #FFD700, #FFA500);

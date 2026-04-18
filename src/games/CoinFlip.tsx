@@ -14,6 +14,7 @@ export default function CoinFlip() {
   const [result, setResult] = useState<Side | null>(null);
   const [won, setWon] = useState<boolean | null>(null);
   const [winAmount, setWinAmount] = useState(0);
+  const [showLossEffect, setShowLossEffect] = useState(false);
   const flipCount = useRef(0);
 
   const { balance } = getState();
@@ -51,6 +52,8 @@ export default function CoinFlip() {
           sounds.lose();
           haptics.lose();
           setWinAmount(-realBet);
+          setShowLossEffect(true);
+          setTimeout(() => setShowLossEffect(false), 600);
         }
       }
     }, 120);
@@ -66,6 +69,9 @@ export default function CoinFlip() {
 
   return (
     <div className="flex flex-col items-center gap-6 px-4 py-6 h-full">
+      {/* Red vignette on loss */}
+      {showLossEffect && <div className="red-vignette" />}
+      
       {/* Coin */}
       <div className="relative flex items-center justify-center" style={{ height: 160 }}>
         <motion.div
@@ -98,6 +104,8 @@ export default function CoinFlip() {
             justifyContent: 'center',
             fontSize: 60,
             border: '4px solid rgba(255,255,255,0.2)',
+            transformStyle: 'preserve-3d',
+            backfaceVisibility: 'visible',
           }}
         >
           {phase === 'flipping' ? '🪙' : result === 'tails' ? '🦅' : '👑'}
@@ -126,7 +134,7 @@ export default function CoinFlip() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="text-center"
+            className={`text-center ${!won ? 'shake-intense' : ''}`}
           >
             <div className={`text-3xl font-black ${won ? 'text-green-400' : 'text-red-400'}`}>
               {won ? '🎉 YOU WIN!' : '💀 YOU LOSE'}

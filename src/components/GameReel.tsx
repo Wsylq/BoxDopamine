@@ -78,17 +78,19 @@ function GameSlide({ gameId, isActive, isFirstEver }: { gameId: GameId; isActive
 
   return (
     <div
-      className="w-full h-full flex flex-col relative overflow-hidden optimized-scroll"
+      className="w-full h-full flex flex-col relative overflow-hidden"
       style={{
         background: '#080810',
+        transform: 'translate3d(0, 0, 0)',
       }}
     >
       {/* Game header pill */}
       <div
-        className="shrink-0 flex items-center gap-3 px-4 pt-3 pb-2 optimized-scroll"
+        className="shrink-0 flex items-center gap-3 px-4 pt-3 pb-2"
         style={{
           background: meta.gradient,
           borderBottom: `1px solid ${meta.color}22`,
+          transform: 'translate3d(0, 0, 0)',
         }}
       >
         <div
@@ -185,7 +187,10 @@ function GameSlide({ gameId, isActive, isFirstEver }: { gameId: GameId; isActive
       </AnimatePresence>
 
       {/* Game content */}
-      <div className="flex-1 overflow-y-auto optimized-scroll" style={{ overscrollBehavior: 'contain' }}>
+      <div className="flex-1 overflow-y-auto" style={{ 
+        overscrollBehavior: 'contain',
+        transform: 'translate3d(0, 0, 0)',
+      }}>
         {isActive && <GameComponent gameId={gameId} />}
       </div>
     </div>
@@ -202,6 +207,7 @@ export default function GameReel() {
   const containerRef = useRef<HTMLDivElement>(null);
   const startYRef = useRef(0);
   const startTimeRef = useRef(0);
+  const rafRef = useRef<number>(0);
 
   // Balance + particles
   const [gameState, setGameState] = useState(getState());
@@ -252,7 +258,12 @@ export default function GameReel() {
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!isDragging) return;
     const delta = e.touches[0].clientY - startYRef.current;
-    setDragOffset(delta);
+    
+    // Use RAF to throttle updates for better performance
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      setDragOffset(delta);
+    });
   }, [isDragging]);
 
   const handleTouchEnd = useCallback(() => {
@@ -282,7 +293,12 @@ export default function GameReel() {
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDragging) return;
     const delta = e.clientY - startYRef.current;
-    setDragOffset(delta);
+    
+    // Use RAF to throttle updates for better performance
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      setDragOffset(delta);
+    });
   }, [isDragging]);
 
   const handleMouseUp = useCallback(() => {
@@ -310,24 +326,26 @@ export default function GameReel() {
 
       {/* ── Floating Stats (No Background) ── */}
       <div
-        className="absolute top-0 left-0 right-0 z-50 flex items-center justify-end gap-3 px-4 optimized-scroll"
+        className="absolute top-0 left-0 right-0 z-50 flex items-center justify-end gap-3 px-4"
         style={{
           paddingTop: 'max(env(safe-area-inset-top), 12px)',
           paddingBottom: 12,
           willChange: balancePulse ? 'transform' : 'auto',
+          transform: 'translate3d(0, 0, 0)',
         }}
       >
         {/* Balance chip */}
         <motion.div
           animate={balancePulse ? { scale: [1, 1.12, 1] } : { scale: 1 }}
           transition={{ duration: 0.3 }}
-          className="px-3 py-1.5 rounded-2xl flex items-center gap-1.5 optimized-scroll"
+          className="px-3 py-1.5 rounded-2xl flex items-center gap-1.5"
           style={{
             background: 'rgba(255,215,0,0.15)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
             border: '1px solid rgba(255,215,0,0.35)',
             boxShadow: balancePulse ? '0 0 16px rgba(255,215,0,0.5), 0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.3)',
+            transform: 'translate3d(0, 0, 0)',
           }}
         >
           <span className="text-yellow-400 text-sm">💰</span>
@@ -336,13 +354,14 @@ export default function GameReel() {
 
         {/* Streak */}
         <div
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl optimized-scroll"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl"
           style={{
             background: 'rgba(255,107,107,0.15)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
             border: '1px solid rgba(255,107,107,0.3)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            transform: 'translate3d(0, 0, 0)',
           }}
         >
           <span className="text-sm">🔥</span>
@@ -354,8 +373,12 @@ export default function GameReel() {
       {/* ── Reel stack ── */}
       <div
         ref={containerRef}
-        className="flex-1 relative overflow-hidden optimized-scroll"
-        style={{ userSelect: 'none', cursor: isDragging ? 'grabbing' : 'grab' }}
+        className="flex-1 relative overflow-hidden"
+        style={{ 
+          userSelect: 'none', 
+          cursor: isDragging ? 'grabbing' : 'grab',
+          touchAction: 'none'
+        }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -365,8 +388,12 @@ export default function GameReel() {
         onMouseLeave={handleMouseUp}
       >
         <motion.div
-          className="absolute left-0 right-0 optimized-scroll"
-          style={{ top: 0, willChange: isDragging ? 'transform' : 'auto' }}
+          className="absolute left-0 right-0"
+          style={{ 
+            top: 0, 
+            willChange: isDragging ? 'transform' : 'auto',
+            transform: 'translate3d(0, 0, 0)'
+          }}
           animate={{
             y: -(currentIndex * containerH) + (isDragging ? dragOffset * 0.4 : 0),
           }}
@@ -378,11 +405,16 @@ export default function GameReel() {
         >
           {games.map((gameId, idx) => {
             // Only render slides near the current index for performance
-            const isNearby = Math.abs(idx - currentIndex) <= 2;
+            const isNearby = Math.abs(idx - currentIndex) <= 1;
             return (
               <div
                 key={`${gameId}-${idx}`}
-                style={{ height: containerH, overflow: 'hidden' }}
+                style={{ 
+                  height: containerH, 
+                  overflow: 'hidden',
+                  transform: 'translate3d(0, 0, 0)',
+                  willChange: isNearby ? 'contents' : 'auto'
+                }}
               >
                 {isNearby ? (
                   <GameSlide gameId={gameId} isActive={idx === currentIndex} isFirstEver={idx === 0} />
