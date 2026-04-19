@@ -105,6 +105,53 @@ jobs:
             npx cap add android
           fi
 
+      - name: Patch Android manifest for network access
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          # Add INTERNET permission if missing
+          if ! grep -q "INTERNET" "$MANIFEST"; then
+            sed -i 's|<uses-permission android:name="android.permission.VIBRATE" />|<uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.INTERNET" />|' "$MANIFEST" || true
+            # Fallback: insert after <manifest ...> line
+            sed -i 's|<manifest |<manifest |' "$MANIFEST"
+            python3 - << 'PYEOF'
+          import re
+          with open("android/app/src/main/AndroidManifest.xml", "r") as f:
+              content = f.read()
+          if 'INTERNET' not in content:
+              content = content.replace(
+                  '<manifest ',
+                  '<manifest ',
+              )
+              # Insert permission before <application
+              content = content.replace(
+                  '<application',
+                  '    <uses-permission android:name="android.permission.INTERNET" />\n    <application',
+                  1
+              )
+              with open("android/app/src/main/AndroidManifest.xml", "w") as f:
+                  f.write(content)
+              print("Added INTERNET permission")
+          else:
+              print("INTERNET permission already present")
+          PYEOF
+          fi
+          # Allow cleartext (ws://) traffic
+          python3 - << 'PYEOF'
+          with open("android/app/src/main/AndroidManifest.xml", "r") as f:
+              content = f.read()
+          if 'usesCleartextTraffic' not in content:
+              content = content.replace(
+                  '<application',
+                  '<application\n        android:usesCleartextTraffic="true"',
+                  1
+              )
+              with open("android/app/src/main/AndroidManifest.xml", "w") as f:
+                  f.write(content)
+              print("Added usesCleartextTraffic=true")
+          else:
+              print("usesCleartextTraffic already present")
+          PYEOF
+
       - name: Copy web assets to Android
         run: npx cap copy android
 
