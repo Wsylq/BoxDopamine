@@ -108,9 +108,16 @@ async def handle_leave_room(websocket: WebSocketServerProtocol, data: dict):
 async def relay_message(websocket: WebSocketServerProtocol, data: dict):
     room_id = data.get('roomId')
     if not room_id or room_id not in rooms:
+        logger.warning(f"Relay failed: room {room_id} not found")
         return
-    msg_type = data.get('message', {}).get('type', 'unknown') if isinstance(data.get('message'), dict) else 'unknown'
-    logger.info(f"Relaying '{msg_type}' in room {room_id} to {len(rooms[room_id]) - 1} other(s)")
+    
+    msg = data.get('message', {})
+    msg_type = msg.get('type', 'unknown') if isinstance(msg, dict) else 'unknown'
+    from_id = data.get('fromId', 'unknown')
+    
+    logger.info(f"📤 Relaying '{msg_type}' from {from_id} in room {room_id} to {len(rooms[room_id]) - 1} other(s)")
+    logger.debug(f"Message content: {msg}")
+    
     await broadcast_to_room(room_id, data, exclude=websocket)
 
 

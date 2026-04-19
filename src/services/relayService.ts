@@ -46,11 +46,10 @@ class RelayService {
     this.shouldReconnect = true;
     this.getUsername();
 
-    // ✅ FIX: Use wss:// for remote connections (required when page is HTTPS)
-    // You MUST update this URL to your wss:// endpoint after setting up SSL/nginx.
+    // WebSocket URL - use environment variable or default
     const wsUrl =
       import.meta.env.VITE_WS_URL ||
-      'wss://node05.host2play.gratis/ws';  // <-- UPDATE THIS after nginx setup
+      'ws://node05.host2play.gratis:5038';
 
     console.log('Connecting to:', wsUrl);
     this.ws = new WebSocket(wsUrl);
@@ -110,8 +109,17 @@ class RelayService {
     };
 
     this.ws.onerror = (err) => {
-      console.error('WS error:', err);
-      // onerror is always followed by onclose, so we handle reconnect there
+      console.error('❌ WebSocket error:', err);
+      console.error('Connection details:', {
+        url: wsUrl,
+        readyState: this.ws?.readyState,
+        roomId: this.roomId
+      });
+      // Check for mixed content error
+      if (window.location.protocol === 'https:' && wsUrl.startsWith('ws:')) {
+        console.error('⚠️ MIXED CONTENT ERROR: Cannot use ws:// from HTTPS page!');
+        console.error('Solution: Use wss:// URL or serve app over HTTP');
+      }
     };
 
     return this.roomId;
@@ -119,7 +127,7 @@ class RelayService {
 
   // ── Helpers ───────────────────────────────────────────────
   private generateRoomId() {
-    return Math.random().toString(36).substr(2, 6).toUpperCase();
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
   }
 
   private scheduleReconnect() {
@@ -140,11 +148,11 @@ class RelayService {
   // ── Send ──────────────────────────────────────────────────
   send(message: any) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(
-        JSON.stringify({ roomId: this.roomId, fromId: this.myId, message })
-      );
+      const payload = { roomId: this.roomId, fromId: this.myId, message };
+      console.log('📤 Sending:', message.type, 'payload:', payload);
+      this.ws.send(JSON.stringify(payload));
     } else {
-      console.warn('send() called but WS not open, state:', this.ws?.readyState);
+      console.warn('❌ send() called but WS not open, state:', this.ws?.readyState);
     }
   }
 

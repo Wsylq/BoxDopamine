@@ -28,6 +28,11 @@ interface GameState {
   winner: boolean;
   players: Player[];
   started: boolean;
+  cashoutVote?: {
+    initiator: string;
+    votes: { [playerId: string]: boolean }; // true = yes, false = no
+    active: boolean;
+  };
 }
 
 export default function RelayMinesweeper({ isHost, onBack }: Props) {
@@ -38,6 +43,7 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [hasInitiatedCashout, setHasInitiatedCashout] = useState(false);
 
   const balance = getState().balance;
   const myId = relayService.myId;
@@ -62,56 +68,229 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
   }, [isHost]);
 
   // Listen for relay messages
-  // In RelayMinesweeper.tsx — patch the subscribe useEffect
-// REPLACE the existing relayService.subscribe block with this:
+  useEffect(() => {
+    // Listen for connection status changes
+    const unsubStatus = relayService.onStatus((isConnected) => {
+      setConnected(isConnected);
+    });
 
-useEffect(() => {
-  // ✅ FIX: Also listen for connection status changes
-  const unsubStatus = relayService.onStatus((isConnected) => {
-    setConnected(isConnected);
-  });
+    const unsub = relayService.subscribe((data, fromId) => {
+      console.log('🎮 Game received:', data?.type, 'from:', fromId, 'data:', data);
 
-  const unsub = relayService.subscribe((data, fromId) => {
-    console.log('Received:', data?.type, data);
-
-    // ✅ FIX: 'joined' is now forwarded from relayService — use it!
-    if (data.type === 'joined') {
-      setConnected(true);
-      if (!isHost) {
-        // Request game state from host once we're confirmed joined
-        setTimeout(() => relayService.send({ type: 'request_state' }), 300);
+      // Server confirmed we joined the room
+      if (data.type === 'joined') {
+        console.log('✅ Joined room, setting connected=true');
+        setConnected(true);
+        if (!isHost) {
+          console.log('📤 Player requesting game state from host');
+          setTimeout(() => relayService.send({ type: 'request_state' }), 300);
+        }
+        return;
       }
-      return;
-    }
 
-    if (data.type === 'player_joined') {
-      setConnected(true);
-      if (isHost && game && data.userId !== myId) {
-        const updated = {
-          ...game,
-          players: [
-            ...game.players,
-            { id: data.userId, username: data.username, bet: 0, ready: false },
-          ],
-        };
-        setGame(updated);
-        setTimeout(() => relayService.send({ type: 'game_state', game: updated }), 100);
+      // Another player joined
+      if (data.type === 'player_joined') {
+        console.log('👤 Player joined:', data.username);
+        setConnected(true);
+        if (isHost && game && data.userId !== myId) {
+          console.log('📤 Host adding player and broadcasting state');
+          const updated = {
+            ...game,
+            players: [
+              ...game.players,
+              { id: data.userId, username: data.username, bet: 0, ready: false },
+            ],
+          };
+          setGame(updated);
+          setTimeout(() => {
+            console.log('📤 Host sending game_state:', updated);
+            relayService.send({ type: 'game_state', game: updated });
+          }, 100);
+        }
+        return;
       }
-      if (!isHost && !game) {
-        relayService.send({ type: 'request_state' });
+
+      // Host: Player requesting game state
+      if (data.type === 'request_state') {
+        console.log('📥 Host received request_state');
+        if (isHost && game) {
+          console.log('📤 Host sending game_state:', game);
+          relayService.send({ type: 'game_state', game });
+        }
+        return;
       }
-      return;
-    }
 
-    // ... rest of your existing handlers (request_state, game_state, bet_set, ready, move, chat)
-    // unchanged from your original code
-  });
+      // Receive game state from host
+      if (data.type === 'game_state') {
+        console.log('📥 Received game_state:', data.game);
+        setGame(data.game);
+        setConnected(true);
+        return;
+      }
 
-  return () => {
-    unsubStatus();
-    unsub();
-  };
-}, [game, isHost]);
+      // Player set their bet
+      if (data.type === 'bet_set') {
+        if (game) {
+          const updated = {
+            ...game,
+            players: game.players.map(p => 
+              p.id === data.playerId ? { ...p, bet: data.bet } : p
+            ),
+          };
+          setGame(updated);
+          if (isHost) relayService.send({ type: 'game_state', game: updated });
+        }
+        return;
+      }
+
+      // Player marked ready
+      if (data.type === 'ready') {
+        console.log('📥 Player ready:', data.playerId);
+        if (game) {
+          const updated = {
+            ...game,
+            players: game.players.map(p => 
+              p.id === data.playerId ? { ...p, ready: true } : p
+            ),
+          };
+          setGame(updated);
+          
+          console.log('Players ready status:', updated.players.map(p => ({ name: p.username, ready: p.ready })));
+          
+          // Host: Check if all ready, start game
+          if (isHost && updated.players.every(p => p.ready)) {
+            console.log('🎮 All players ready! Starting game...');
+            const gridSize = 5;
+            const mineCount = 6;
+            const grid = createGrid(gridSize, mineCount);
+            const started = {
+              ...updated,
+              grid,
+              revealed: Array(gridSize).fill(null).map(() => Array(gridSize).fill(false)),
+              started: true,
+            };
+            setGame(started);
+            console.log('📤 Broadcasting game start');
+            relayService.send({ type: 'game_state', game: started });
+          } else if (isHost) {
+            console.log('⏳ Waiting for more players to ready up');
+            relayService.send({ type: 'game_state', game: updated });
+          }
+        }
+        return;
+      }
+
+      // Player made a move
+      if (data.type === 'move') {
+        console.log('📥 Received move:', data.row, data.col);
+        if (game && isHost) {
+          console.log('🎮 Host processing move');
+          const result = revealCell(game, data.row, data.col);
+          setGame(result);
+          console.log('📤 Host broadcasting updated game state');
+          relayService.send({ type: 'game_state', game: result });
+          
+          // Handle game over
+          if (result.gameOver) {
+            setTimeout(() => {
+              result.players.forEach(p => {
+                if (result.winner) {
+                  const payout = Math.floor(p.bet * result.multiplier);
+                  if (p.id === myId) addBalance(payout);
+                }
+              });
+            }, 1000);
+          }
+        } else {
+          console.log('⚠️ Non-host received move, ignoring');
+        }
+        return;
+      }
+
+      // Chat message
+      if (data.type === 'chat') {
+        setChat(prev => [...prev, { username: data.username, msg: data.msg }]);
+        sounds.click();
+        return;
+      }
+
+      // Cashout vote initiated
+      if (data.type === 'initiate_cashout') {
+        console.log('💰 Cashout vote initiated by:', data.initiator);
+        if (game && isHost) {
+          const updated = {
+            ...game,
+            cashoutVote: {
+              initiator: data.initiator,
+              votes: {},
+              active: true,
+            },
+          };
+          setGame(updated);
+          relayService.send({ type: 'game_state', game: updated });
+        }
+        return;
+      }
+
+      // Cashout vote response
+      if (data.type === 'cashout_vote') {
+        console.log('🗳️ Cashout vote from:', data.playerId, 'vote:', data.vote);
+        if (game && isHost && game.cashoutVote) {
+          const updated = {
+            ...game,
+            cashoutVote: {
+              ...game.cashoutVote,
+              votes: {
+                ...game.cashoutVote.votes,
+                [data.playerId]: data.vote,
+              },
+            },
+          };
+
+          // Check if all players voted
+          const allVoted = game.players.every(p => p.id in updated.cashoutVote!.votes);
+          if (allVoted) {
+            const allYes = Object.values(updated.cashoutVote.votes).every(v => v === true);
+            if (allYes) {
+              // Cashout approved - end game as winner
+              console.log('✅ Cashout approved!');
+              const cashedOut = {
+                ...updated,
+                gameOver: true,
+                winner: true,
+                cashoutVote: undefined,
+              };
+              setGame(cashedOut);
+              relayService.send({ type: 'game_state', game: cashedOut });
+              
+              // Payout
+              setTimeout(() => {
+                cashedOut.players.forEach(p => {
+                  const payout = Math.floor(p.bet * cashedOut.multiplier);
+                  if (p.id === myId) addBalance(payout);
+                });
+              }, 500);
+            } else {
+              // Cashout rejected - continue game
+              console.log('❌ Cashout rejected');
+              const rejected = { ...updated, cashoutVote: undefined };
+              setGame(rejected);
+              relayService.send({ type: 'game_state', game: rejected });
+            }
+          } else {
+            setGame(updated);
+            relayService.send({ type: 'game_state', game: updated });
+          }
+        }
+        return;
+      }
+    });
+
+    return () => {
+      unsubStatus();
+      unsub();
+    };
+  }, [game, isHost, myId]);
 
 
   // Player: Request initial game state
@@ -145,37 +324,82 @@ useEffect(() => {
   };
 
   const handleReady = () => {
-    if (!game) return;
+    console.log('🎯 Ready button clicked, isHost:', isHost);
+    if (!game) {
+      console.log('❌ No game state');
+      return;
+    }
     const myPlayer = game.players.find(p => p.id === myId);
+    console.log('My player:', myPlayer);
+    
     if (!myPlayer || myPlayer.bet === 0) {
       alert('Set your bet first!');
       return;
     }
     
-    addBalance(-myPlayer.bet); // Deduct bet
+    console.log('💰 Deducting bet:', myPlayer.bet);
+    addBalance(-myPlayer.bet);
     setMyReady(true);
+    
+    console.log('📤 Sending ready message');
     relayService.send({ type: 'ready', playerId: myId });
     
-    if (game) {
-      const updated = {
-        ...game,
-        players: game.players.map(p => 
-          p.id === myId ? { ...p, ready: true } : p
-        ),
+    const updated = {
+      ...game,
+      players: game.players.map(p => 
+        p.id === myId ? { ...p, ready: true } : p
+      ),
+    };
+    setGame(updated);
+    console.log('✅ Local state updated, marked as ready');
+    console.log('Players ready status:', updated.players.map(p => ({ name: p.username, ready: p.ready })));
+    
+    // Host: Check if all ready after updating local state
+    if (isHost && updated.players.every(p => p.ready)) {
+      console.log('🎮 All players ready! Starting game...');
+      const gridSize = 5;
+      const mineCount = 6;
+      const grid = createGrid(gridSize, mineCount);
+      const started = {
+        ...updated,
+        grid,
+        revealed: Array(gridSize).fill(null).map(() => Array(gridSize).fill(false)),
+        started: true,
       };
-      setGame(updated);
+      setGame(started);
+      console.log('📤 Broadcasting game start');
+      relayService.send({ type: 'game_state', game: started });
     }
+    
     sounds.reward();
     haptics.medium();
   };
 
   const handleMove = (row: number, col: number) => {
-    if (!game || !game.started || game.gameOver || game.revealed[row][col]) return;
+    if (!game || !game.started || game.gameOver || game.revealed[row][col]) {
+      console.log('❌ Move blocked:', { started: game?.started, gameOver: game?.gameOver, revealed: game?.revealed[row][col] });
+      return;
+    }
     
     const myIndex = game.players.findIndex(p => p.id === myId);
-    if (game.currentTurn !== myIndex) return;
+    console.log('🎯 Attempting move:', { row, col, myIndex, currentTurn: game.currentTurn, isMyTurn: game.currentTurn === myIndex, isHost, myId });
+    
+    if (game.currentTurn !== myIndex) {
+      console.log('❌ Not your turn!');
+      return;
+    }
 
+    console.log('📤 Sending move to host, isHost:', isHost);
     relayService.send({ type: 'move', row, col });
+    
+    // If I'm the host, process it immediately
+    if (isHost) {
+      console.log('🎮 I am host, processing move locally');
+      const result = revealCell(game, row, col);
+      setGame(result);
+      relayService.send({ type: 'game_state', game: result });
+    }
+    
     sounds.flip();
     haptics.light();
   };
@@ -190,10 +414,16 @@ useEffect(() => {
 
   if (!connected) {
     return (
-      <div className="h-full flex items-center justify-center" style={{ background: '#000' }}>
-        <div className="text-center">
+      <div className="h-full flex items-center justify-center px-5" style={{ background: '#000' }}>
+        <div className="text-center max-w-md">
           <div className="text-white text-lg mb-2">Connecting...</div>
-          <div className="text-white/60 text-sm">Room: {relayService.getRoomId()}</div>
+          <div className="text-white/60 text-sm mb-4">Room: {relayService.getRoomId()}</div>
+          <div className="text-white/40 text-xs space-y-2">
+            <div>If stuck here, check:</div>
+            <div>• Server is running on port 5038</div>
+            <div>• Browser console (F12) for errors</div>
+            <div>• HTTPS pages need wss:// not ws://</div>
+          </div>
         </div>
       </div>
     );
@@ -304,6 +534,24 @@ useEffect(() => {
                 <span className="text-white font-bold">${formatCurrency((myPlayer?.bet || 0) * game.multiplier)}</span>
               </div>
               {!game.gameOver && (
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  {!hasInitiatedCashout && !game.cashoutVote && (
+                    <button
+                      onClick={() => {
+                        setHasInitiatedCashout(true);
+                        relayService.send({ type: 'initiate_cashout', initiator: myId });
+                        sounds.coin();
+                        haptics.light();
+                      }}
+                      className="w-full py-2 rounded-xl font-bold text-sm"
+                      style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#000' }}
+                    >
+                      💰 Request Cashout
+                    </button>
+                  )}
+                </div>
+              )}
+              {!game.gameOver && (
                 <div className="mt-2 pt-2 text-white/60 text-xs" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                   {isMyTurn ? '🟢 Your turn!' : `⏳ ${game.players[game.currentTurn]?.username}'s turn`}
                 </div>
@@ -311,9 +559,79 @@ useEffect(() => {
             </div>
           </div>
 
+          {/* Cashout Vote Popup */}
+          {game.cashoutVote && game.cashoutVote.active && (
+            <div className="absolute inset-0 flex items-center justify-center px-5" style={{ background: 'rgba(0,0,0,0.8)', zIndex: 100 }}>
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="rounded-3xl p-6 max-w-sm w-full"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(251,191,36,0.2), rgba(245,158,11,0.1))',
+                  border: '2px solid #fbbf24',
+                  boxShadow: '0 0 30px rgba(251,191,36,0.3)',
+                }}
+              >
+                <div className="text-center mb-4">
+                  <div className="text-4xl mb-2">💰</div>
+                  <div className="text-white font-black text-xl mb-2">Cashout Vote</div>
+                  <div className="text-white/80 text-sm mb-1">
+                    {game.players.find(p => p.id === game.cashoutVote?.initiator)?.username} wants to cashout
+                  </div>
+                  <div className="text-white/60 text-xs">
+                    Current win: ${formatCurrency((myPlayer?.bet || 0) * game.multiplier)}
+                  </div>
+                </div>
+
+                {!(myId in (game.cashoutVote.votes || {})) ? (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        relayService.send({ type: 'cashout_vote', playerId: myId, vote: false });
+                        sounds.click();
+                        haptics.light();
+                      }}
+                      className="flex-1 py-3 rounded-xl font-bold"
+                      style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#ef4444' }}
+                    >
+                      ❌ No
+                    </button>
+                    <button
+                      onClick={() => {
+                        relayService.send({ type: 'cashout_vote', playerId: myId, vote: true });
+                        sounds.coin();
+                        haptics.medium();
+                      }}
+                      className="flex-1 py-3 rounded-xl font-bold"
+                      style={{ background: '#22c55e', color: '#fff' }}
+                    >
+                      ✅ Yes
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <div className="text-white/60 text-sm mb-3">Waiting for other players...</div>
+                    <div className="space-y-2">
+                      {game.players.map(p => (
+                        <div key={p.id} className="flex justify-between items-center text-sm">
+                          <span className="text-white/80">{p.username}</span>
+                          <span className="text-white/60">
+                            {p.id in game.cashoutVote!.votes
+                              ? game.cashoutVote!.votes[p.id] ? '✅ Yes' : '❌ No'
+                              : '⏳ Voting...'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+
           {/* Grid */}
           <div className="flex-1 px-5 overflow-auto">
-            <div className="grid gap-1 mx-auto" style={{ gridTemplateColumns: `repeat(${game.grid.length}, 1fr)`, maxWidth: 400 }}>
+            <div className="grid gap-2 mx-auto" style={{ gridTemplateColumns: `repeat(${game.grid.length}, 1fr)`, maxWidth: 400 }}>
               {game.grid.map((row, i) =>
                 row.map((cell, j) => (
                   <motion.button
@@ -321,17 +639,40 @@ useEffect(() => {
                     onClick={() => handleMove(i, j)}
                     disabled={!isMyTurn || game.revealed[i][j] || game.gameOver}
                     whileTap={{ scale: 0.95 }}
-                    className="aspect-square rounded-lg font-bold text-sm flex items-center justify-center"
+                    className="aspect-square rounded-xl flex items-center justify-center relative"
                     style={{
                       background: game.revealed[i][j]
-                        ? cell.isMine ? '#ef4444' : cell.adjacentMines === 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.12)'
+                        ? 'rgba(15,23,42,0.8)' // Same dark background for both
                         : 'rgba(255,255,255,0.08)',
                       border: '1px solid rgba(255,255,255,0.1)',
-                      color: '#fff',
                       cursor: isMyTurn && !game.revealed[i][j] && !game.gameOver ? 'pointer' : 'default',
+                      boxShadow: game.revealed[i][j] 
+                        ? cell.isMine 
+                          ? '0 0 20px rgba(239,68,68,0.6)' // Red glow for bomb
+                          : '0 0 20px rgba(34,197,94,0.5)' // Green glow for gem
+                        : 'none',
                     }}
                   >
-                    {game.revealed[i][j] && (cell.isMine ? '💣' : cell.adjacentMines || '')}
+                    {game.revealed[i][j] && (
+                      cell.isMine ? (
+                        <img 
+                          src="/minesweeper-assets/bomb.png" 
+                          alt="bomb" 
+                          className="w-full h-full object-contain"
+                          style={{ 
+                            filter: 'drop-shadow(0 0 10px rgba(255,100,100,0.8))',
+                            transform: 'scale(2)' // Change this: 1.3 = 30% bigger, 1.5 = 50% bigger, 2.0 = double size
+                          }}
+                        />
+                      ) : (
+                        <img 
+                          src="/minesweeper-assets/gem.png" 
+                          alt="gem" 
+                          className="w-full h-full object-contain p-2"
+                          style={{ filter: 'drop-shadow(0 0 12px rgba(34,197,94,0.9))' }}
+                        />
+                      )
+                    )}
                   </motion.button>
                 ))
               )}
@@ -363,44 +704,57 @@ useEffect(() => {
         </>
       )}
 
-      {/* Chat */}
+      {/* Chat - Floating */}
       <AnimatePresence>
         {showChat && (
           <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            className="absolute inset-0 flex flex-col"
-            style={{ background: '#000', zIndex: 200 }}
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            className="absolute bottom-0 left-0 right-0 flex flex-col"
+            style={{ 
+              background: 'rgba(0,0,0,0.95)', 
+              backdropFilter: 'blur(10px)',
+              zIndex: 200,
+              maxHeight: '60vh',
+              borderTopLeftRadius: '24px',
+              borderTopRightRadius: '24px',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderBottom: 'none'
+            }}
           >
-            <div className="px-5 py-4 flex justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-              <span className="text-white font-bold">Chat</span>
-              <button onClick={() => setShowChat(false)} className="text-white/60">✕</button>
+            <div className="px-5 py-3 flex justify-between items-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+              <span className="text-white font-bold text-sm">💬 Chat</span>
+              <button onClick={() => setShowChat(false)} className="text-white/60 text-xl">×</button>
             </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-              {chat.map((c, i) => (
-                <div key={i} className={c.username === myUsername ? 'text-right' : ''}>
-                  <div className="text-white/40 text-xs mb-1">{c.username}</div>
-                  <div className="inline-block px-4 py-2 rounded-2xl text-sm" style={{
-                    background: c.username === myUsername ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.08)',
-                    color: '#fff',
-                  }}>
-                    {c.msg}
+            <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
+              {chat.length === 0 ? (
+                <div className="text-white/40 text-xs text-center py-4">No messages yet</div>
+              ) : (
+                chat.map((c, i) => (
+                  <div key={i} className={c.username === myUsername ? 'text-right' : ''}>
+                    <div className="text-white/40 text-xs mb-1">{c.username}</div>
+                    <div className="inline-block px-3 py-2 rounded-xl text-sm" style={{
+                      background: c.username === myUsername ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.08)',
+                      color: '#fff',
+                    }}>
+                      {c.msg}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
-            <div className="px-5 py-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <div className="px-5 py-3 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSendChat()}
-                placeholder="Message..."
+                placeholder="Type a message..."
                 className="flex-1 px-4 py-2 rounded-xl text-white text-sm"
                 style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
               />
-              <button onClick={handleSendChat} className="px-6 py-2 rounded-xl font-bold text-sm" style={{ background: '#22c55e', color: '#fff' }}>
+              <button onClick={handleSendChat} className="px-5 py-2 rounded-xl font-bold text-sm" style={{ background: '#22c55e', color: '#fff' }}>
                 Send
               </button>
             </div>
