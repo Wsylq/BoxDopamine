@@ -57,6 +57,7 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
         started: false,
       };
       setGame(newGame);
+      setConnected(true); // Host is always connected
     }
   }, [isHost]);
 
@@ -67,23 +68,31 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
       
       if (data.type === 'player_joined') {
         setConnected(true);
-        // Host: Add player
+        // Host: Add player and broadcast state
         if (isHost && game && data.userId !== myId) {
           const updated = {
             ...game,
             players: [...game.players, { id: data.userId, username: data.username, bet: 0, ready: false }],
           };
           setGame(updated);
-          relayService.send({ type: 'game_state', game: updated });
+          // Broadcast to new player
+          setTimeout(() => {
+            relayService.send({ type: 'game_state', game: updated });
+          }, 100);
+        }
+        // Player: Request game state from host
+        if (!isHost && !game) {
+          relayService.send({ type: 'request_state' });
+        }
+      } else if (data.type === 'request_state') {
+        // Host: Send current game state
+        if (isHost && game) {
+          relayService.send({ type: 'game_state', game });
         }
       } else if (data.type === 'joined') {
         setConnected(true);
       } else if (data.type === 'game_state') {
-        // Player: Receive game state
-        setGame(data.game);
-        setConnected(true);
-      } else if (data.type === 'bet_set') {
-        // Player: Receive game state
+        // Receive game state
         setGame(data.game);
         setConnected(true);
       } else if (data.type === 'bet_set') {
@@ -153,13 +162,15 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
     return unsub;
   }, [game, isHost]);
 
-  // Player: Send join request
+  // Player: Request initial game state
   useEffect(() => {
-    if (!isHost && !connected) {
-      // Connection happens automatically in relayService.connect()
-      setTimeout(() => setConnected(true), 1000);
+    if (!isHost && !game && connected) {
+      // Request game state from host
+      setTimeout(() => {
+        relayService.send({ type: 'request_state' });
+      }, 500);
     }
-  }, [isHost, connected]);
+  }, [isHost, game, connected]);
 
   const handleSetBet = () => {
     if (bet < 10 || bet > balance) {
@@ -258,7 +269,18 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
       {/* Waiting Room */}
       {!game.started && (
         <div className="flex-1 px-5 overflow-y-auto">
-          <div className="text-white font-bold text-lg mb-4">Waiting Room</div>
+          <div className="text-white font-bold text-lg mb-2">Waiting Room</div>
+          
+          {/* Game Rules */}
+          <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)' }}>
+            <div className="text-white font-bold text-sm mb-2">🎮 Team Minesweeper</div>
+            <div className="text-white/80 text-xs space-y-1">
+              <div>• Take turns revealing cells</div>
+              <div>• Avoid mines to increase multiplier</div>
+              <div>• ⚠️ If ANY player hits a mine, EVERYONE loses!</div>
+              <div>• Clear all safe cells to win together</div>
+            </div>
+          </div>
           
           {/* Set Bet */}
           {!myPlayer?.bet && (
@@ -376,12 +398,12 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
               >
                 <div className="text-4xl mb-2">{game.winner ? '🎉' : '💥'}</div>
                 <div className="text-white font-black text-xl mb-2">
-                  {game.winner ? 'Victory!' : 'Game Over'}
+                  {game.winner ? 'Team Victory!' : 'Team Eliminated!'}
                 </div>
                 <div className="text-white/80 text-sm">
                   {game.winner
-                    ? `You won ${formatCurrency((myPlayer?.bet || 0) * game.multiplier)}!`
-                    : 'Hit a mine! Better luck next time.'}
+                    ? `Everyone wins! You got ${formatCurrency((myPlayer?.bet || 0) * game.multiplier)}!`
+                    : 'A teammate hit a mine! Everyone loses their bet.'}
                 </div>
               </motion.div>
             )}

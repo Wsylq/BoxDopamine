@@ -25,9 +25,10 @@ npm run dev
 
 **Features:**
 - Real-time WebSocket connection
-- Team minesweeper with betting
+- **Team Minesweeper** - Take turns, if ANY player hits a mine, EVERYONE loses!
+- Individual betting - Each player bets their own amount
 - Built-in chat
-- Dynamic multiplier (1x → 3x)
+- Dynamic multiplier (1x → 3x) - Win together or lose together!
 
 ## Native Android (Kotlin + Compose)
 

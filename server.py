@@ -108,9 +108,12 @@ async def handle_leave_room(websocket: WebSocketServerProtocol, data: dict):
 async def relay_message(websocket: WebSocketServerProtocol, data: dict):
     """Relay message to all clients in the same room"""
     room_id = data.get('roomId')
+    msg_type = data.get('message', {}).get('type') if isinstance(data.get('message'), dict) else 'unknown'
     
     if not room_id or room_id not in rooms:
         return
+    
+    logger.info(f"Relaying '{msg_type}' message in room {room_id}")
     
     # Broadcast to all in room except sender
     await broadcast_to_room(room_id, data, exclude=websocket)
