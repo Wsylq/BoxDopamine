@@ -39,6 +39,17 @@ class RelayService {
     return this.username || this.initUsername();
   }
 
+  // ── Stable persistent player ID ───────────────────────────
+  private getOrCreatePlayerId(username: string): string {
+    const key = `relay_player_id_${username}`;
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = `${username}_${Math.random().toString(36).substring(2, 6)}`;
+      localStorage.setItem(key, id);
+    }
+    return id;
+  }
+
   // ── Connect ───────────────────────────────────────────────
   connect(isHost: boolean, roomId?: string) {
     this.isHost = isHost;
@@ -56,7 +67,7 @@ class RelayService {
 
     this.ws.onopen = () => {
       console.log('✅ WebSocket open');
-      this.myId = `${this.username}_${Date.now().toString(36).slice(-4)}`;
+      this.myId = this.getOrCreatePlayerId(this.username);
 
       this.ws!.send(
         JSON.stringify({

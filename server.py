@@ -65,6 +65,24 @@ async def handle_join_room(websocket: WebSocketServerProtocol, data: dict):
         await websocket.send(json.dumps({"error": "Missing roomId or userId"}))
         return
 
+    if room_id not in rooms:
+        rooms[room_id] = set()
+        logger.info(f"Created room: {room_id}")
+
+    # ── Deduplicate: kick old connection with same username ──
+    stale = [
+        ws for ws, info in user_data.items()
+        if info.get('roomId') == room_id and info.get('username') == username and ws != websocket
+    ]
+    for old_ws in stale:
+        logger.info(f"♻️  Replacing stale connection for {username} in room {room_id}")
+        rooms[room_id].discard(old_ws)
+        del user_data[old_ws]
+        try:
+            await old_ws.close(1000, "Replaced by new connection")
+        except Exception:
+            pass
+
     user_data[websocket] = {
         'roomId': room_id,
         'userId': user_id,
@@ -72,10 +90,6 @@ async def handle_join_room(websocket: WebSocketServerProtocol, data: dict):
         'isHost': is_host,
         'joinedAt': datetime.now().isoformat()
     }
-
-    if room_id not in rooms:
-        rooms[room_id] = set()
-        logger.info(f"Created room: {room_id}")
 
     rooms[room_id].add(websocket)
 
@@ -89,16 +103,18 @@ async def handle_join_room(websocket: WebSocketServerProtocol, data: dict):
         "playerCount": len(rooms[room_id])
     }))
 
-    # Notify everyone else in room
+    # Notify everyone else in room — use 'player_rejoined' if they were already in the game
+    was_reconnect = len(stale) > 0
     await broadcast_to_room(room_id, {
         "type": "player_joined",
         "userId": user_id,
         "username": username,
         "isHost": is_host,
-        "playerCount": len(rooms[room_id])
+        "playerCount": len(rooms[room_id]),
+        "isReconnect": was_reconnect,
     }, exclude=websocket)
 
-    logger.info(f"User {username} ({user_id}) joined room {room_id} — {len(rooms[room_id])} players")
+    logger.info(f"User {username} ({user_id}) {'rejoined' if was_reconnect else 'joined'} room {room_id} — {len(rooms[room_id])} players")
 
 
 async def handle_leave_room(websocket: WebSocketServerProtocol, data: dict):

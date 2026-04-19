@@ -28,9 +28,14 @@ interface GameState {
   winner: boolean;
   players: Player[];
   started: boolean;
+  mineCount: number; // Number of mines in the grid
   cashoutVote?: {
     initiator: string;
-    votes: { [playerId: string]: boolean }; // true = yes, false = no
+    votes: { [playerId: string]: boolean };
+    active: boolean;
+  };
+  playAgainVote?: {
+    votes: { [playerId: string]: boolean };
     active: boolean;
   };
 }
@@ -61,6 +66,7 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
         winner: false,
         players: [{ id: myId, username: myUsername, bet: 0, ready: false }],
         started: false,
+        mineCount: 6,
       };
       setGame(newGame);
       setConnected(true); // Host is always connected
@@ -90,22 +96,36 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
 
       // Another player joined
       if (data.type === 'player_joined') {
-        console.log('👤 Player joined:', data.username);
+        console.log('👤 Player joined:', data.username, 'isReconnect:', data.isReconnect);
         setConnected(true);
         if (isHost && game && data.userId !== myId) {
-          console.log('📤 Host adding player and broadcasting state');
-          const updated = {
-            ...game,
-            players: [
-              ...game.players,
-              { id: data.userId, username: data.username, bet: 0, ready: false },
-            ],
-          };
-          setGame(updated);
-          setTimeout(() => {
-            console.log('📤 Host sending game_state:', updated);
-            relayService.send({ type: 'game_state', game: updated });
-          }, 100);
+          // If reconnect, player already exists in game.players — just send state
+          const alreadyInGame = game.players.some(p => p.username === data.username);
+          if (alreadyInGame) {
+            console.log('♻️ Player reconnected, sending current state');
+            // Update their player ID in case it changed (shouldn't with stable IDs, but just in case)
+            const updated = {
+              ...game,
+              players: game.players.map(p =>
+                p.username === data.username ? { ...p, id: data.userId } : p
+              ),
+            };
+            setGame(updated);
+            setTimeout(() => relayService.send({ type: 'game_state', game: updated }), 100);
+          } else {
+            console.log('📤 Host adding new player and broadcasting state');
+            const updated = {
+              ...game,
+              players: [
+                ...game.players,
+                { id: data.userId, username: data.username, bet: 0, ready: false },
+              ],
+            };
+            setGame(updated);
+            setTimeout(() => {
+              relayService.send({ type: 'game_state', game: updated });
+            }, 100);
+          }
         }
         return;
       }
@@ -123,8 +143,14 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
       // Receive game state from host
       if (data.type === 'game_state') {
         console.log('📥 Received game_state:', data.game);
-        setGame(data.game);
+        const incoming: GameState = data.game;
+        setGame(incoming);
         setConnected(true);
+        // Reset local flags when a new waiting room starts
+        if (incoming && !incoming.started && !incoming.gameOver) {
+          setMyReady(false);
+          setHasInitiatedCashout(false);
+        }
         return;
       }
 
@@ -161,8 +187,7 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
           if (isHost && updated.players.every(p => p.ready)) {
             console.log('🎮 All players ready! Starting game...');
             const gridSize = 5;
-            const mineCount = 6;
-            const grid = createGrid(gridSize, mineCount);
+            const grid = createGrid(gridSize, updated.mineCount);
             const started = {
               ...updated,
               grid,
@@ -189,18 +214,6 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
           setGame(result);
           console.log('📤 Host broadcasting updated game state');
           relayService.send({ type: 'game_state', game: result });
-          
-          // Handle game over
-          if (result.gameOver) {
-            setTimeout(() => {
-              result.players.forEach(p => {
-                if (result.winner) {
-                  const payout = Math.floor(p.bet * result.multiplier);
-                  if (p.id === myId) addBalance(payout);
-                }
-              });
-            }, 1000);
-          }
         } else {
           console.log('⚠️ Non-host received move, ignoring');
         }
@@ -222,7 +235,9 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
             ...game,
             cashoutVote: {
               initiator: data.initiator,
-              votes: {},
+              votes: {
+                [data.initiator]: true, // Initiator automatically votes Yes
+              },
               active: true,
             },
           };
@@ -234,46 +249,144 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
 
       // Cashout vote response
       if (data.type === 'cashout_vote') {
-        console.log('🗳️ Cashout vote from:', data.playerId, 'vote:', data.vote);
-        if (game && isHost && game.cashoutVote) {
+        console.log('🗳️ Cashout vote received:', {
+          from: data.playerId,
+          vote: data.vote,
+          isHost,
+          hasGame: !!game,
+          hasCashoutVote: !!game?.cashoutVote,
+          currentVotes: game?.cashoutVote?.votes,
+          allPlayers: game?.players.map(p => p.id)
+        });
+
+        // Non-host: just update local state from game_state broadcasts
+        if (!isHost) {
+          console.log('⚠️ Non-host received cashout_vote, ignoring (will get update via game_state)');
+          return;
+        }
+
+        // Host: process the vote
+        if (!game || !game.cashoutVote) {
+          console.error('❌ Host received vote but no active cashout vote!', { hasGame: !!game, hasCashoutVote: !!game?.cashoutVote });
+          return;
+        }
+
+        const updated = {
+          ...game,
+          cashoutVote: {
+            ...game.cashoutVote,
+            votes: {
+              ...game.cashoutVote.votes,
+              [data.playerId]: data.vote,
+            } as { [playerId: string]: boolean },
+          },
+        };
+        
+        console.log('✅ Vote recorded:', {
+          playerId: data.playerId,
+          vote: data.vote,
+          allVotes: updated.cashoutVote.votes,
+          playerIds: game.players.map(p => p.id)
+        });
+
+        // Always update and broadcast state first
+        setGame(updated);
+        relayService.send({ type: 'game_state', game: updated });
+
+        // Check if all players voted
+        const allVoted = game.players.every(p => updated.cashoutVote!.votes[p.id] !== undefined);
+        console.log('All voted check:', {
+          allVoted,
+          votes: updated.cashoutVote.votes,
+          players: game.players.map(p => ({ id: p.id, hasVoted: updated.cashoutVote!.votes[p.id] !== undefined }))
+        });
+        
+        if (allVoted) {
+          const allYes = Object.values(updated.cashoutVote.votes).every(v => v === true);
+          console.log('All yes?', allYes, 'votes:', updated.cashoutVote.votes);
+          
+          if (allYes) {
+            // Cashout approved - end game as winner
+            console.log('✅ Cashout approved!');
+            const cashedOut = {
+              ...updated,
+              gameOver: true,
+              winner: true,
+              cashoutVote: undefined,
+            };
+            setGame(cashedOut);
+            relayService.send({ type: 'game_state', game: cashedOut });
+          } else {
+            // Cashout rejected - continue game
+            console.log('❌ Cashout rejected');
+            const rejected = { ...updated, cashoutVote: undefined };
+            setGame(rejected);
+            relayService.send({ type: 'game_state', game: rejected });
+          }
+        }
+        return;
+      }
+
+      // Play again vote initiated
+      if (data.type === 'initiate_play_again') {
+        console.log('🔄 Play again vote initiated');
+        if (game && isHost) {
           const updated = {
             ...game,
-            cashoutVote: {
-              ...game.cashoutVote,
+            playAgainVote: {
+              votes: {} as { [playerId: string]: boolean },
+              active: true,
+            },
+          };
+          setGame(updated);
+          relayService.send({ type: 'game_state', game: updated });
+        }
+        return;
+      }
+
+      // Play again vote response
+      if (data.type === 'play_again_vote') {
+        console.log('🗳️ Play again vote from:', data.playerId, 'vote:', data.vote);
+        if (game && isHost && game.playAgainVote) {
+          const updated = {
+            ...game,
+            playAgainVote: {
+              ...game.playAgainVote,
               votes: {
-                ...game.cashoutVote.votes,
+                ...game.playAgainVote.votes,
                 [data.playerId]: data.vote,
-              },
+              } as { [playerId: string]: boolean },
             },
           };
 
           // Check if all players voted
-          const allVoted = game.players.every(p => p.id in updated.cashoutVote!.votes);
+          const allVoted = game.players.every(p => p.id in updated.playAgainVote!.votes);
           if (allVoted) {
-            const allYes = Object.values(updated.cashoutVote.votes).every(v => v === true);
-            if (allYes) {
-              // Cashout approved - end game as winner
-              console.log('✅ Cashout approved!');
-              const cashedOut = {
-                ...updated,
-                gameOver: true,
-                winner: true,
-                cashoutVote: undefined,
+            // Get players who voted yes
+            const playersWhoVotedYes = game.players.filter(p => updated.playAgainVote!.votes[p.id] === true);
+            
+            if (playersWhoVotedYes.length >= 2) {
+              // At least 2 players want to play - start new game with them
+              console.log('✅ Starting new game with', playersWhoVotedYes.length, 'players');
+              const newGame: GameState = {
+                grid: [],
+                revealed: [],
+                currentTurn: 0,
+                multiplier: 1.0,
+                gameOver: false,
+                winner: false,
+                players: playersWhoVotedYes.map(p => ({ ...p, bet: 0, ready: false })),
+                started: false,
+                mineCount: 6, // Reset to default
               };
-              setGame(cashedOut);
-              relayService.send({ type: 'game_state', game: cashedOut });
-              
-              // Payout
-              setTimeout(() => {
-                cashedOut.players.forEach(p => {
-                  const payout = Math.floor(p.bet * cashedOut.multiplier);
-                  if (p.id === myId) addBalance(payout);
-                });
-              }, 500);
+              setGame(newGame);
+              setHasInitiatedCashout(false);
+              setMyReady(false);
+              relayService.send({ type: 'game_state', game: newGame });
             } else {
-              // Cashout rejected - continue game
-              console.log('❌ Cashout rejected');
-              const rejected = { ...updated, cashoutVote: undefined };
+              // Not enough players - just close vote
+              console.log('❌ Not enough players for new game');
+              const rejected = { ...updated, playAgainVote: undefined };
               setGame(rejected);
               relayService.send({ type: 'game_state', game: rejected });
             }
@@ -302,6 +415,25 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
       }, 500);
     }
   }, [isHost, game, connected]);
+
+  // Unified payout: fires for ALL players (host and non-host) when game ends as winner
+  const [paidOut, setPaidOut] = useState(false);
+  useEffect(() => {
+    if (!game) return;
+    if (game.gameOver && game.winner && !paidOut) {
+      const me = game.players.find(p => p.id === myId);
+      if (me && me.bet > 0) {
+        const payout = Math.floor(me.bet * game.multiplier);
+        console.log(`💰 Payout: $${payout} (bet $${me.bet} × ${game.multiplier.toFixed(2)}x) for ${me.username}`);
+        addBalance(payout);
+        setPaidOut(true);
+      }
+    }
+    // Reset paidOut when a new game starts
+    if (!game.gameOver && !game.started) {
+      setPaidOut(false);
+    }
+  }, [game?.gameOver, game?.winner, game?.started]);
 
   const handleSetBet = () => {
     if (bet < 10 || bet > balance) {
@@ -358,8 +490,7 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
     if (isHost && updated.players.every(p => p.ready)) {
       console.log('🎮 All players ready! Starting game...');
       const gridSize = 5;
-      const mineCount = 6;
-      const grid = createGrid(gridSize, mineCount);
+      const grid = createGrid(gridSize, updated.mineCount);
       const started = {
         ...updated,
         grid,
@@ -402,6 +533,95 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
     
     sounds.flip();
     haptics.light();
+  };
+
+  const submitCashoutVote = (vote: boolean) => {
+    if (!game || !game.cashoutVote) return;
+
+    if (isHost) {
+      // Host processes vote directly — messages sent by host are NOT relayed back to host
+      const newVotes = { ...game.cashoutVote.votes, [myId]: vote };
+      const updated = {
+        ...game,
+        cashoutVote: { ...game.cashoutVote, votes: newVotes },
+      };
+      setGame(updated);
+
+      // Check if all players voted
+      const allVoted = game.players.every(p => newVotes[p.id] !== undefined);
+      console.log('Host voted, allVoted:', allVoted, 'votes:', newVotes);
+
+      if (allVoted) {
+        const allYes = Object.values(newVotes).every(v => v === true);
+        if (allYes) {
+          const cashedOut = { ...updated, gameOver: true, winner: true, cashoutVote: undefined };
+          setGame(cashedOut);
+          relayService.send({ type: 'game_state', game: cashedOut });
+        } else {
+          const rejected = { ...updated, cashoutVote: undefined };
+          setGame(rejected);
+          relayService.send({ type: 'game_state', game: rejected });
+        }
+      } else {
+        relayService.send({ type: 'game_state', game: updated });
+      }
+    } else {
+      // Non-host: update local state optimistically and send vote to host
+      const updated = {
+        ...game,
+        cashoutVote: {
+          ...game.cashoutVote,
+          votes: { ...game.cashoutVote.votes, [myId]: vote },
+        },
+      };
+      setGame(updated);
+      relayService.send({ type: 'cashout_vote', playerId: myId, vote });
+    }
+  };
+
+  const submitPlayAgainVote = (vote: boolean) => {
+    if (!game || !game.playAgainVote) return;
+
+    if (isHost) {
+      // Host processes vote directly
+      const newVotes = { ...game.playAgainVote.votes, [myId]: vote };
+      const updated = { ...game, playAgainVote: { ...game.playAgainVote, votes: newVotes } };
+      setGame(updated);
+
+      const allVoted = game.players.every(p => newVotes[p.id] !== undefined);
+      if (allVoted) {
+        const playersWhoVotedYes = game.players.filter(p => newVotes[p.id] === true);
+        if (playersWhoVotedYes.length >= 2) {
+          const newGame: GameState = {
+            grid: [], revealed: [], currentTurn: 0, multiplier: 1.0,
+            gameOver: false, winner: false,
+            players: playersWhoVotedYes.map(p => ({ ...p, bet: 0, ready: false })),
+            started: false, mineCount: 6,
+          };
+          setGame(newGame);
+          setHasInitiatedCashout(false);
+          setMyReady(false);
+          relayService.send({ type: 'game_state', game: newGame });
+        } else {
+          const rejected = { ...updated, playAgainVote: undefined };
+          setGame(rejected);
+          relayService.send({ type: 'game_state', game: rejected });
+        }
+      } else {
+        relayService.send({ type: 'game_state', game: updated });
+      }
+    } else {
+      // Non-host: update local state and send vote
+      const updated = {
+        ...game,
+        playAgainVote: {
+          ...game.playAgainVote,
+          votes: { ...game.playAgainVote.votes, [myId]: vote },
+        },
+      };
+      setGame(updated);
+      relayService.send({ type: 'play_again_vote', playerId: myId, vote });
+    }
   };
 
   const handleSendChat = () => {
@@ -453,6 +673,37 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
         <div className="flex-1 px-5 overflow-y-auto">
           <div className="text-white font-bold text-lg mb-2">Waiting Room</div>
           
+          {/* Mine Count Selector (Host Only) */}
+          {isHost && (
+            <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)' }}>
+              <div className="text-white font-bold text-sm mb-3">⚙️ Game Settings (Host)</div>
+              <div className="text-white/60 text-xs mb-2">Number of Mines (more = higher payout)</div>
+              <div className="flex gap-2">
+                {[3, 6, 9, 12, 15].map(count => (
+                  <button
+                    key={count}
+                    onClick={() => {
+                      if (game) {
+                        const updated = { ...game, mineCount: count };
+                        setGame(updated);
+                        relayService.send({ type: 'game_state', game: updated });
+                      }
+                      sounds.click();
+                    }}
+                    className="flex-1 py-2 rounded-lg font-bold text-sm"
+                    style={{
+                      background: game?.mineCount === count ? '#fbbf24' : 'rgba(255,255,255,0.08)',
+                      color: game?.mineCount === count ? '#000' : '#fff',
+                      border: `1px solid ${game?.mineCount === count ? '#fbbf24' : 'rgba(255,255,255,0.1)'}`,
+                    }}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Game Rules */}
           <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)' }}>
             <div className="text-white font-bold text-sm mb-2">🎮 Team Minesweeper</div>
@@ -561,7 +812,11 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
 
           {/* Cashout Vote Popup */}
           {game.cashoutVote && game.cashoutVote.active && (
-            <div className="absolute inset-0 flex items-center justify-center px-5" style={{ background: 'rgba(0,0,0,0.8)', zIndex: 100 }}>
+            <div 
+              className="absolute inset-0 flex items-center justify-center px-5" 
+              style={{ background: 'rgba(0,0,0,0.9)', zIndex: 1000 }}
+              onClick={(e) => e.stopPropagation()}
+            >
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -571,6 +826,7 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
                   border: '2px solid #fbbf24',
                   boxShadow: '0 0 30px rgba(251,191,36,0.3)',
                 }}
+                onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-center mb-4">
                   <div className="text-4xl mb-2">💰</div>
@@ -583,27 +839,42 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
                   </div>
                 </div>
 
-                {!(myId in (game.cashoutVote.votes || {})) ? (
+                {!game.cashoutVote.votes[myId] && game.cashoutVote.votes[myId] !== false ? (
                   <div className="flex gap-3">
                     <button
-                      onClick={() => {
-                        relayService.send({ type: 'cashout_vote', playerId: myId, vote: false });
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('🗳️ Voting NO for cashout, myId:', myId, 'isHost:', isHost);
+                        submitCashoutVote(false);
                         sounds.click();
                         haptics.light();
                       }}
                       className="flex-1 py-3 rounded-xl font-bold"
-                      style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#ef4444' }}
+                      style={{ 
+                        background: 'rgba(239,68,68,0.2)', 
+                        border: '1px solid #ef4444', 
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        touchAction: 'manipulation'
+                      }}
                     >
                       ❌ No
                     </button>
                     <button
-                      onClick={() => {
-                        relayService.send({ type: 'cashout_vote', playerId: myId, vote: true });
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log('🗳️ Voting YES for cashout, myId:', myId, 'isHost:', isHost);
+                        submitCashoutVote(true);
                         sounds.coin();
                         haptics.medium();
                       }}
                       className="flex-1 py-3 rounded-xl font-bold"
-                      style={{ background: '#22c55e', color: '#fff' }}
+                      style={{ 
+                        background: '#22c55e', 
+                        color: '#fff',
+                        cursor: 'pointer',
+                        touchAction: 'manipulation'
+                      }}
                     >
                       ✅ Yes
                     </button>
@@ -616,7 +887,7 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
                         <div key={p.id} className="flex justify-between items-center text-sm">
                           <span className="text-white/80">{p.username}</span>
                           <span className="text-white/60">
-                            {p.id in game.cashoutVote!.votes
+                            {game.cashoutVote!.votes[p.id] !== undefined
                               ? game.cashoutVote!.votes[p.id] ? '✅ Yes' : '❌ No'
                               : '⏳ Voting...'}
                           </span>
@@ -693,11 +964,76 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
                 <div className="text-white font-black text-xl mb-2">
                   {game.winner ? 'Team Victory!' : 'Team Eliminated!'}
                 </div>
-                <div className="text-white/80 text-sm">
+                <div className="text-white/80 text-sm mb-4">
                   {game.winner
                     ? `Everyone wins! You got ${formatCurrency((myPlayer?.bet || 0) * game.multiplier)}!`
                     : 'A teammate hit a mine! Everyone loses their bet.'}
                 </div>
+
+                {/* Play Again Button/Voting */}
+                {!game.playAgainVote ? (
+                  <button
+                    onClick={() => {
+                      relayService.send({ type: 'initiate_play_again' });
+                      sounds.coin();
+                      haptics.light();
+                    }}
+                    className="w-full py-3 rounded-xl font-bold"
+                    style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff' }}
+                  >
+                    🔄 Play Again
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    {!game.playAgainVote.votes[myId] && game.playAgainVote.votes[myId] !== false ? (
+                      <>
+                        <div className="text-white/60 text-xs mb-2">Do you want to play again?</div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              console.log('🗳️ Voting NO for play again');
+                              submitPlayAgainVote(false);
+                              sounds.click();
+                              haptics.light();
+                            }}
+                            className="flex-1 py-2 rounded-xl font-bold text-sm"
+                            style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#ef4444' }}
+                          >
+                            No
+                          </button>
+                          <button
+                            onClick={() => {
+                              console.log('🗳️ Voting YES for play again');
+                              submitPlayAgainVote(true);
+                              sounds.coin();
+                              haptics.medium();
+                            }}
+                            className="flex-1 py-2 rounded-xl font-bold text-sm"
+                            style={{ background: '#22c55e', color: '#fff' }}
+                          >
+                            Yes
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <div className="text-white/60 text-xs mb-2">Waiting for votes...</div>
+                        <div className="space-y-1">
+                          {game.players.map(p => (
+                            <div key={p.id} className="flex justify-between items-center text-xs">
+                              <span className="text-white/70">{p.username}</span>
+                              <span className="text-white/50">
+                                {game.playAgainVote!.votes[p.id] !== undefined
+                                  ? game.playAgainVote!.votes[p.id] ? '✅' : '❌'
+                                  : '⏳'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )}
           </div>
@@ -809,9 +1145,13 @@ function revealCell(game: GameState, row: number, col: number): GameState {
   }
 
   const totalCells = game.grid.length * game.grid.length;
-  const mineCount = game.grid.flat().filter(c => c.isMine).length;
+  const mineCount = game.mineCount;
   const revealedCount = newRevealed.flat().filter(Boolean).length;
-  const newMultiplier = 1 + (revealedCount / (totalCells - mineCount)) * 2;
+  
+  // Higher mine count = higher multiplier
+  const baseMultiplier = 1 + (mineCount / totalCells) * 3; // More mines = higher base
+  const progressMultiplier = (revealedCount / (totalCells - mineCount)) * baseMultiplier;
+  const newMultiplier = 1 + progressMultiplier;
 
   const allRevealed = revealedCount === totalCells - mineCount;
 

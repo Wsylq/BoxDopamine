@@ -11,7 +11,7 @@
   src: url('/fonts/SF-Pro-Text-Regular.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 @font-face {
@@ -19,7 +19,7 @@
   src: url('/fonts/SF-Pro-Text-Semibold.otf') format('opentype');
   font-weight: 600;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 @font-face {
@@ -27,7 +27,7 @@
   src: url('/fonts/SF-Pro-Display-Bold.otf') format('opentype');
   font-weight: 700;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 @font-face {
@@ -35,14 +35,14 @@
   src: url('/fonts/SF-Pro-Display-Black.otf') format('opentype');
   font-weight: 900;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 /* Apple Color Emoji */
 @font-face {
   font-family: 'Apple Color Emoji';
   src: url('/fonts/AppleColorEmoji-Windows.ttf') format('truetype');
-  font-display: optional;
+  font-display: block;
   unicode-range: U+1F300-1F9FF, U+2600-26FF, U+2700-27BF;
 }
 
