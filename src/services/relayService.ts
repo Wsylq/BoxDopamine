@@ -35,7 +35,7 @@ class RelayService {
     this.getUsername();
 
     // Use the configured WebSocket server
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://node05.host2play.gratis:5038';
     console.log('Connecting to:', wsUrl);
     this.ws = new WebSocket(wsUrl);
 

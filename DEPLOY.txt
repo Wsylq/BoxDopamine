@@ -1,0 +1,33 @@
+QUICK DEPLOY GUIDE
+==================
+
+STEP 1: Deploy Python Server
+-----------------------------
+1. Go to Pterodactyl panel: node05.host2play.gratis:5038
+2. Upload these files:
+   - server.py
+   - requirements.txt
+3. In terminal run:
+   pip install -r requirements.txt
+   python server.py
+4. Keep it running!
+
+STEP 2: Build & Deploy Frontend
+--------------------------------
+1. Make sure .env has: VITE_WS_URL=ws://node05.host2play.gratis:5038
+2. Run: npm run build
+3. Deploy dist/ folder to your hosting
+
+STEP 3: Test
+------------
+1. Open app in browser
+2. Click "Multiplayer" tab
+3. Click "Host Game"
+4. Share Room ID with friend
+5. Friend clicks "Join Game" and enters Room ID
+6. Play!
+
+TROUBLESHOOTING:
+- Can't connect? Check server is running on port 5038
+- Connection refused? Check firewall allows port 5038
+- Still issues? Check browser console for errors

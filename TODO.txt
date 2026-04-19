@@ -29,3 +29,5 @@ P2P MULTIPLAYER (WebRTC):
 ✅ Fullscreen game (hides navbar)
 ✅ Responsive on all Android devices
 ✅ Fixed button overlap with floating navbar
+
+now the host is stuck on "connecting..." and other player is stuck on "waiting for host..." 

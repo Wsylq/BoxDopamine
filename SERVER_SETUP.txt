@@ -1,0 +1,18 @@
+MULTIPLAYER SERVER SETUP
+========================
+
+1. Upload these files to your Pterodactyl panel:
+   - server.py
+   - requirements.txt
+
+2. Install dependencies:
+   pip install -r requirements.txt
+
+3. Run the server:
+   python server.py
+
+4. Server will run on: node05.host2play.gratis:5038
+
+5. Frontend is already configured to connect to this server.
+
+That's it! The multiplayer should work once the server is running.

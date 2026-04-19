@@ -9,19 +9,25 @@ npm install
 npm run dev
 ```
 
-## 👥 Multiplayer (P2P - No Server Needed!)
+## 👥 Multiplayer (WebSocket Server)
 
+**Server Setup:**
+1. Upload `server.py` and `requirements.txt` to your Pterodactyl panel
+2. Run: `pip install -r requirements.txt`
+3. Run: `python server.py`
+4. Server runs on: `node05.host2play.gratis:5038`
+
+**Playing:**
 1. Click **Multiplayer** tab
 2. **Host**: Click "Host Game" → Share Room ID
 3. **Join**: Enter Room ID → Click "Join"
-4. Play instantly with friends anywhere!
+4. Play with friends in real-time!
 
 **Features:**
-- Direct peer-to-peer connection (WebRTC)
-- No server setup needed
-- Zero lag
-- Works across cities/countries
+- Real-time WebSocket connection
 - Team minesweeper with betting
+- Built-in chat
+- Dynamic multiplier (1x → 3x)
 
 ## Native Android (Kotlin + Compose)
 
@@ -41,9 +47,9 @@ Or push to GitHub - Actions will build automatically.
 ### Single Player
 🪙 Coin Flip • 🃏 Higher/Lower • 🎯 Plinko • 🎲 Dice • 🎫 Scratch Card • 📊 Stats • 🔥 Streaks
 
-### Multiplayer (P2P)
+### Multiplayer (WebSocket)
 💣 **Team Minesweeper** - 2-3 players
-🚀 **Instant Connection** - No server needed
+🌐 **WebSocket Server** - Python relay server
 💰 **Individual Betting** - Each player bets their own amount
 📈 **Dynamic Multiplier** - 1x → 3x based on progress
 💬 **Built-in Chat** - Coordinate with teammates

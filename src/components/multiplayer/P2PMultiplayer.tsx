@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// P2P Multiplayer - Host or Join (Using Relay)
+// Multiplayer - Host or Join (WebSocket Relay)
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react';
