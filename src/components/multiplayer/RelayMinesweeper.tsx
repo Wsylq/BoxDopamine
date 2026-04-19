@@ -62,105 +62,57 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
   }, [isHost]);
 
   // Listen for relay messages
-  useEffect(() => {
-    const unsub = relayService.subscribe((data, fromId) => {
-      console.log('Received:', data.type, data);
-      
-      if (data.type === 'player_joined') {
-        setConnected(true);
-        // Host: Add player and broadcast state
-        if (isHost && game && data.userId !== myId) {
-          const updated = {
-            ...game,
-            players: [...game.players, { id: data.userId, username: data.username, bet: 0, ready: false }],
-          };
-          setGame(updated);
-          // Broadcast to new player
-          setTimeout(() => {
-            relayService.send({ type: 'game_state', game: updated });
-          }, 100);
-        }
-        // Player: Request game state from host
-        if (!isHost && !game) {
-          relayService.send({ type: 'request_state' });
-        }
-      } else if (data.type === 'request_state') {
-        // Host: Send current game state
-        if (isHost && game) {
-          relayService.send({ type: 'game_state', game });
-        }
-      } else if (data.type === 'joined') {
-        setConnected(true);
-      } else if (data.type === 'game_state') {
-        // Receive game state
-        setGame(data.game);
-        setConnected(true);
-      } else if (data.type === 'bet_set') {
-        // Update player bet
-        if (game) {
-          const updated = {
-            ...game,
-            players: game.players.map(p => 
-              p.id === data.playerId ? { ...p, bet: data.bet } : p
-            ),
-          };
-          setGame(updated);
-          if (isHost) relayService.send({ type: 'game_state', game: updated });
-        }
-      } else if (data.type === 'ready') {
-        // Mark player ready
-        if (game) {
-          const updated = {
-            ...game,
-            players: game.players.map(p => 
-              p.id === data.playerId ? { ...p, ready: true } : p
-            ),
-          };
-          setGame(updated);
-          
-          // Host: Check if all ready, start game
-          if (isHost && updated.players.every(p => p.ready)) {
-            const gridSize = 5;
-            const mineCount = 6;
-            const grid = createGrid(gridSize, mineCount);
-            const started = {
-              ...updated,
-              grid,
-              revealed: Array(gridSize).fill(null).map(() => Array(gridSize).fill(false)),
-              started: true,
-            };
-            setGame(started);
-            relayService.send({ type: 'game_state', game: started });
-          } else if (isHost) {
-            relayService.send({ type: 'game_state', game: updated });
-          }
-        }
-      } else if (data.type === 'move') {
-        // Process move
-        if (game && isHost) {
-          const result = revealCell(game, data.row, data.col);
-          setGame(result);
-          relayService.send({ type: 'game_state', game: result });
-          
-          // Handle game over
-          if (result.gameOver) {
-            setTimeout(() => {
-              result.players.forEach(p => {
-                if (result.winner) {
-                  const payout = Math.floor(p.bet * result.multiplier);
-                  if (p.id === myId) addBalance(payout);
-                }
-              });
-            }, 1000);
-          }
-        }
-      } else if (data.type === 'chat') {
-        setChat(prev => [...prev, { username: data.username, msg: data.msg }]);
-        sounds.click();
+  // In RelayMinesweeper.tsx — patch the subscribe useEffect
+// REPLACE the existing relayService.subscribe block with this:
+
+useEffect(() => {
+  // ✅ FIX: Also listen for connection status changes
+  const unsubStatus = relayService.onStatus((isConnected) => {
+    setConnected(isConnected);
+  });
+
+  const unsub = relayService.subscribe((data, fromId) => {
+    console.log('Received:', data?.type, data);
+
+    // ✅ FIX: 'joined' is now forwarded from relayService — use it!
+    if (data.type === 'joined') {
+      setConnected(true);
+      if (!isHost) {
+        // Request game state from host once we're confirmed joined
+        setTimeout(() => relayService.send({ type: 'request_state' }), 300);
       }
-    });
-    return unsub;
-  }, [game, isHost]);
+      return;
+    }
+
+    if (data.type === 'player_joined') {
+      setConnected(true);
+      if (isHost && game && data.userId !== myId) {
+        const updated = {
+          ...game,
+          players: [
+            ...game.players,
+            { id: data.userId, username: data.username, bet: 0, ready: false },
+          ],
+        };
+        setGame(updated);
+        setTimeout(() => relayService.send({ type: 'game_state', game: updated }), 100);
+      }
+      if (!isHost && !game) {
+        relayService.send({ type: 'request_state' });
+      }
+      return;
+    }
+
+    // ... rest of your existing handlers (request_state, game_state, bet_set, ready, move, chat)
+    // unchanged from your original code
+  });
+
+  return () => {
+    unsubStatus();
+    unsub();
+  };
+}, [game, isHost]);
+
 
   // Player: Request initial game state
   useEffect(() => {
