@@ -7,9 +7,10 @@ import { relayService } from '../../services/relayService';
 import { sounds, haptics } from '../../store/gameStore';
 import RelayMinesweeper from './RelayMinesweeper';
 import RelayAvalanche from './RelayAvalanche';
+import RelayBlackjack from './RelayBlackjack';
 import FriendsScreen from './FriendsScreen';
 
-type GameType = 'minesweeper' | 'avalanche';
+type GameType = 'minesweeper' | 'avalanche' | 'blackjack';
 
 export default function P2PMultiplayer() {
   const [view, setView] = useState<'menu' | 'gameSelect' | 'host' | 'join' | 'game' | 'detecting' | 'friends'>('menu');
@@ -71,7 +72,8 @@ export default function P2PMultiplayer() {
       }
       // Joiner: sniff game type from first game_state
       if (data.type === 'game_state' && view === 'detecting') {
-        const gameType: GameType = data.game?.gameType === 'avalanche' ? 'avalanche' : 'minesweeper';
+        const gt = data.game?.gameType;
+        const gameType: GameType = gt === 'avalanche' ? 'avalanche' : gt === 'blackjack' ? 'blackjack' : 'minesweeper';
         detectedGame.current = gameType;
         setSelectedGame(gameType);
         setView('game');
@@ -90,7 +92,7 @@ export default function P2PMultiplayer() {
   };
 
   if (view === 'game') {
-    const GameComponent = selectedGame === 'avalanche' ? RelayAvalanche : RelayMinesweeper;
+    const GameComponent = selectedGame === 'avalanche' ? RelayAvalanche : selectedGame === 'blackjack' ? RelayBlackjack : RelayMinesweeper;
     return <GameComponent isHost={isHost} onBack={onBack} />;
   }
 
@@ -212,7 +214,7 @@ export default function P2PMultiplayer() {
 
             <button
               onClick={() => startHosting('avalanche')}
-              className="w-full p-4 rounded-2xl mb-4"
+              className="w-full p-4 rounded-2xl mb-3"
               style={{
                 background: 'rgba(59,130,246,0.1)',
                 border: '1px solid rgba(59,130,246,0.3)',
@@ -223,6 +225,23 @@ export default function P2PMultiplayer() {
                 <div className="text-left">
                   <div className="text-white font-bold">Avalanche</div>
                   <div className="text-white/60 text-sm">Auto-reveal • Team voting • Push your luck</div>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => startHosting('blackjack')}
+              className="w-full p-4 rounded-2xl mb-4"
+              style={{
+                background: 'rgba(34,197,94,0.1)',
+                border: '1px solid rgba(34,197,94,0.3)',
+              }}
+            >
+              <div className="flex items-center gap-4">
+                <div className="text-3xl">🃏</div>
+                <div className="text-left">
+                  <div className="text-white font-bold">Collective Blackjack</div>
+                  <div className="text-white/60 text-sm">Team hand • Vote Hit/Stand • Beat the dealer</div>
                 </div>
               </div>
             </button>
