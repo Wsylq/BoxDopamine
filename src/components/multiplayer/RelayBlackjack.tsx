@@ -169,6 +169,11 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
         setConnected(true);
         if (isHost && gameRef.current && data.userId !== myId) {
           const g = gameRef.current;
+          // Only add players during waiting phase — ignore joins mid-game
+          if (g.phase !== 'waiting') {
+            setTimeout(() => relayService.send({ type: 'game_state', game: g }), 100);
+            return;
+          }
           const already = g.players.some(p => p.username === data.username);
           const updated = already
             ? { ...g, players: g.players.map(p => p.username === data.username ? { ...p, id: data.userId } : p) }
@@ -200,7 +205,7 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
         if (gameRef.current) {
           const updated = { ...gameRef.current, players: gameRef.current.players.map(p => p.id === data.playerId ? { ...p, ready: true } : p) };
           setGame(updated);
-          if (isHost && updated.players.length >= 1 && updated.players.every(p => p.ready)) {
+          if (isHost && updated.players.length >= 2 && updated.players.every(p => p.ready)) {
             startRound(updated);
           } else if (isHost) {
             relayService.send({ type: 'game_state', game: updated });
@@ -357,7 +362,7 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
     relayService.send({ type: 'ready', playerId: myId });
     const updated = { ...game, players: game.players.map(p => p.id === myId ? { ...p, ready: true } : p) };
     setGame(updated);
-    if (isHost && updated.players.every(p => p.ready)) startRound(updated);
+    if (isHost && updated.players.length >= 2 && updated.players.every(p => p.ready)) startRound(updated);
     else if (isHost) relayService.send({ type: 'game_state', game: updated });
     sounds.reward(); haptics.medium();
   };

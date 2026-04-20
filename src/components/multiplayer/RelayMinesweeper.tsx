@@ -103,11 +103,14 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
         console.log('👤 Player joined:', data.username, 'isReconnect:', data.isReconnect);
         setConnected(true);
         if (isHost && game && data.userId !== myId) {
-          // If reconnect, player already exists in game.players — just send state
+          // Only add new players during waiting phase — mid-game joins just get current state
+          if (game.started) {
+            setTimeout(() => relayService.send({ type: 'game_state', game }), 100);
+            return;
+          }
           const alreadyInGame = game.players.some(p => p.username === data.username);
           if (alreadyInGame) {
             console.log('♻️ Player reconnected, sending current state');
-            // Update their player ID in case it changed (shouldn't with stable IDs, but just in case)
             const updated = {
               ...game,
               players: game.players.map(p =>
@@ -187,8 +190,8 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
           
           console.log('Players ready status:', updated.players.map(p => ({ name: p.username, ready: p.ready })));
           
-          // Host: Check if all ready, start game
-          if (isHost && updated.players.every(p => p.ready)) {
+          // Host: Check if all ready, start game (need at least 2 players)
+          if (isHost && updated.players.length >= 2 && updated.players.every(p => p.ready)) {
             console.log('🎮 All players ready! Starting game...');
             const gridSize = 5;
             const grid = createGrid(gridSize, updated.mineCount);
@@ -487,8 +490,8 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
     console.log('✅ Local state updated, marked as ready');
     console.log('Players ready status:', updated.players.map(p => ({ name: p.username, ready: p.ready })));
     
-    // Host: Check if all ready after updating local state
-    if (isHost && updated.players.every(p => p.ready)) {
+    // Host: Check if all ready after updating local state (need at least 2 players)
+    if (isHost && updated.players.length >= 2 && updated.players.every(p => p.ready)) {
       console.log('🎮 All players ready! Starting game...');
       const gridSize = 5;
       const grid = createGrid(gridSize, updated.mineCount);

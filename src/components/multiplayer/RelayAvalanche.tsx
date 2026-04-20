@@ -235,6 +235,12 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
         setConnected(true);
         if (isHost && gameRef.current && data.userId !== myId) {
           const g = gameRef.current;
+          // Only add players during the waiting phase — ignore joins mid-game
+          if (g.phase !== 'waiting') {
+            // Still send current state so late joiner sees the game
+            setTimeout(() => relayService.send({ type: 'game_state', game: g }), 100);
+            return;
+          }
           const already = g.players.some(p => p.username === data.username);
           const updated = already
             ? { ...g, players: g.players.map(p => p.username === data.username ? { ...p, id: data.userId } : p) }
@@ -270,7 +276,8 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
         if (gameRef.current) {
           const updated = { ...gameRef.current, players: gameRef.current.players.map(p => p.id === data.playerId ? { ...p, ready: true } : p) };
           setGame(updated);
-          if (isHost && updated.players.length >= 1 && updated.players.every(p => p.ready)) {
+          // Need at least 2 players and ALL must be ready before starting
+          if (isHost && updated.players.length >= 2 && updated.players.every(p => p.ready)) {
             const { tiles, revealOrder } = buildBoard(updated.gridSize, updated.bombCount);
             const started: GameState = { ...updated, tiles, revealOrder, phase: 'revealing', revealedCount: 0, lastRevealedIndex: -1, multiplier: 1.0, bombHitIndex: -1, winner: false };
             setGame(started);
@@ -396,8 +403,8 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
     const updated = { ...game, players: game.players.map(p => p.id === myId ? { ...p, ready: true } : p) };
     setGame(updated);
 
-    // Host: if all players in the updated state are ready, start immediately
-    if (isHost && updated.players.length >= 1 && updated.players.every(p => p.ready)) {
+    // Host: if ALL players (min 2) are ready, start
+    if (isHost && updated.players.length >= 2 && updated.players.every(p => p.ready)) {
       const { tiles, revealOrder } = buildBoard(updated.gridSize, updated.bombCount);
       const started: GameState = { ...updated, tiles, revealOrder, phase: 'revealing', revealedCount: 0, lastRevealedIndex: -1, multiplier: 1.0, bombHitIndex: -1, winner: false };
       setGame(started);
