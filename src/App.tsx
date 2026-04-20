@@ -208,12 +208,11 @@ export default function App() {
             border: '1px solid rgba(255,255,255,0.15)',
             boxShadow: '0 8px 40px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.1) inset, 0 -1px 0 rgba(0,0,0,0.2) inset',
           }}
-        >
-          {([
+        > {...([
             { id: 'feed' as Tab, emoji: '🎮', label: 'Play' },
             { id: 'multiplayer' as Tab, emoji: '👥', label: 'Multi' },
             { id: 'stats' as Tab, emoji: '📊', label: 'Stats' },
-          ] as { id: Tab; emoji: string; label: string }[]).map((item, idx, arr) => {
+          ]).map((item, idx, arr) => {
             const isActive = tab === item.id;
             return (
               <button
@@ -249,7 +248,7 @@ export default function App() {
             );
           })}
         </motion.div>
-      </div>
-    </div>
-  );
-}
+        </div>
+        </div>
+        );
+        }

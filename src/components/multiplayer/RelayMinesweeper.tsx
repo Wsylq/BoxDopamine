@@ -47,16 +47,19 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
   const [chat, setChat] = useState<{ username: string; msg: string }[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(!isHost ? relayService.isConnected() : false);
   const [hasInitiatedCashout, setHasInitiatedCashout] = useState(false);
 
   const balance = getState().balance;
   const myId = relayService.myId;
   const myUsername = relayService.getUsername();
 
-  // Host: Initialize game
+  // Host: Initialize game — wait for WS to open so myId is populated
   useEffect(() => {
-    if (isHost && !game) {
+    if (!isHost || game) return;
+    const tryInit = () => {
+      const id = relayService.myId;
+      if (!id) { setTimeout(tryInit, 100); return; }
       const newGame: GameState = {
         grid: [],
         revealed: [],
@@ -64,13 +67,14 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
         multiplier: 1.0,
         gameOver: false,
         winner: false,
-        players: [{ id: myId, username: myUsername, bet: 0, ready: false }],
+        players: [{ id, username: relayService.getUsername(), bet: 0, ready: false }],
         started: false,
         mineCount: 6,
       };
       setGame(newGame);
-      setConnected(true); // Host is always connected
-    }
+      setConnected(true);
+    };
+    tryInit();
   }, [isHost]);
 
   // Listen for relay messages
@@ -406,15 +410,12 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
   }, [game, isHost, myId]);
 
 
-  // Player: Request initial game state
+  // Player: Request initial game state — fire on mount, relay already connected
   useEffect(() => {
-    if (!isHost && !game && connected) {
-      // Request game state from host
-      setTimeout(() => {
-        relayService.send({ type: 'request_state' });
-      }, 500);
-    }
-  }, [isHost, game, connected]);
+    if (isHost) return;
+    const t = setTimeout(() => relayService.send({ type: 'request_state' }), 200);
+    return () => clearTimeout(t);
+  }, [isHost]);
 
   // Unified payout: fires for ALL players (host and non-host) when game ends as winner
   const [paidOut, setPaidOut] = useState(false);
