@@ -12,6 +12,9 @@ type StatusHandler = (connected: boolean) => void;
 
 class RelayService {
   private ws: WebSocket | null = null;
+  // Separate persistent WS just for receiving invites (stays connected to username room)
+  private presenceWs: WebSocket | null = null;
+  private presenceRoom = '';
   private handlers: Set<MessageHandler> = new Set();
   private statusHandlers: Set<StatusHandler> = new Set();
   private reconnectTimer: number | null = null;
@@ -136,6 +139,49 @@ class RelayService {
     return this.roomId;
   }
 
+  // ── Presence connection (invite channel) ─────────────────
+  // ── Presence connection (invite channel) ─────────────────
+  connectPresence(username: string) {
+    if (this.presenceWs &&
+        (this.presenceWs.readyState === WebSocket.OPEN ||
+         this.presenceWs.readyState === WebSocket.CONNECTING)) return;
+    this.presenceRoom = username;
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://node05.host2play.gratis:5038';
+    this.presenceWs = new WebSocket(wsUrl);
+
+    this.presenceWs.onopen = () => {
+      console.log('🔔 Presence WS open, joining room:', username);
+      // Use a truly unique userId so server dedup never kicks this out
+      const presenceId = 'presence_' + username + '_' + Date.now();
+      this.presenceWs!.send(JSON.stringify({
+        type: 'join_room',
+        roomId: username,
+        userId: presenceId,
+        username: '__presence__' + username,
+        isHost: false,
+      }));
+    };
+
+    this.presenceWs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('🔔 Presence msg:', data.type, data.message?.type);
+        if (data.type === 'pong' || data.type === 'joined' || data.type === 'player_joined') return;
+        if (data.message) {
+          console.log('🔔 Forwarding to handlers:', data.message.type);
+          this.handlers.forEach(h => h(data.message, data.fromId ?? 'server'));
+        }
+      } catch { /* ignore */ }
+    };
+
+    this.presenceWs.onclose = () => {
+      console.log('🔔 Presence WS closed, reconnecting...');
+      setTimeout(() => { if (this.presenceRoom) this.connectPresence(this.presenceRoom); }, 3000);
+    };
+
+    this.presenceWs.onerror = () => console.warn('🔔 Presence WS error');
+  }
+
   // ── Helpers ───────────────────────────────────────────────
   private generateRoomId() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -167,6 +213,33 @@ class RelayService {
     }
   }
 
+  // Send invite to a friend's presence room (their username)
+  // Uses a one-shot WS: joins their room first (creating it if needed), then sends
+  sendInvite(targetUsername: string, message: any) {
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://node05.host2play.gratis:5038';
+    const ws = new WebSocket(wsUrl);
+    console.log('📨 sendInvite → room:', targetUsername, 'message:', message);
+
+    ws.onopen = () => {
+      const inviteId = 'invite_' + Date.now();
+      console.log('📨 One-shot WS open, joining room:', targetUsername);
+      ws.send(JSON.stringify({
+        type: 'join_room',
+        roomId: targetUsername,
+        userId: inviteId,
+        username: '__inviter__' + this.username,
+        isHost: false,
+      }));
+      setTimeout(() => {
+        const payload = { roomId: targetUsername, fromId: inviteId, message };
+        console.log('📨 Sending invite payload:', JSON.stringify(payload));
+        ws.send(JSON.stringify(payload));
+        setTimeout(() => ws.close(), 500);
+      }, 400);
+    };
+    ws.onerror = () => console.warn('❌ sendInvite WS error');
+  }
+
   // ── Subscribe ─────────────────────────────────────────────
   subscribe(handler: MessageHandler) {
     this.handlers.add(handler);
@@ -181,6 +254,10 @@ class RelayService {
   // ── Getters ───────────────────────────────────────────────
   getRoomId() {
     return this.roomId;
+  }
+
+  getIsHost() {
+    return this.isHost;
   }
 
   isConnected() {

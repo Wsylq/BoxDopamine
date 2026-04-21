@@ -8,10 +8,20 @@ interface Friend {
   addedAt: number;
 }
 
+export interface GameInvite {
+  fromUsername: string;
+  roomId: string;
+  gameType: 'minesweeper' | 'avalanche' | 'blackjack';
+  receivedAt: number;
+}
+
 const STORAGE_KEY = 'dopamine_friends';
 
 class FriendsService {
   private listeners = new Set<() => void>();
+  private inviteListeners = new Set<(invite: GameInvite) => void>();
+  // Per-friend cooldown: friendId → last invite sent timestamp
+  private inviteCooldowns = new Map<string, number>();
 
   getFriends(): Friend[] {
     try {
@@ -24,7 +34,8 @@ class FriendsService {
 
   addFriend(id: string, name: string) {
     const friends = this.getFriends();
-    if (!friends.find(f => f.id === id)) {
+    // id and name are both the username
+    if (!friends.find(f => f.id.toLowerCase() === id.toLowerCase())) {
       friends.push({ id, name, addedAt: Date.now() });
       this.save(friends);
     }
@@ -33,6 +44,27 @@ class FriendsService {
   removeFriend(id: string) {
     const friends = this.getFriends().filter(f => f.id !== id);
     this.save(friends);
+  }
+
+  // Returns ms remaining on cooldown, 0 if ready
+  getInviteCooldown(friendId: string): number {
+    const last = this.inviteCooldowns.get(friendId) ?? 0;
+    const elapsed = Date.now() - last;
+    return Math.max(0, 5000 - elapsed);
+  }
+
+  recordInviteSent(friendId: string) {
+    this.inviteCooldowns.set(friendId, Date.now());
+  }
+
+  // Called when we receive an invite from the relay
+  receiveInvite(invite: GameInvite) {
+    this.inviteListeners.forEach(fn => fn(invite));
+  }
+
+  onInvite(fn: (invite: GameInvite) => void) {
+    this.inviteListeners.add(fn);
+    return () => this.inviteListeners.delete(fn);
   }
 
   private save(friends: Friend[]) {

@@ -8,19 +8,31 @@ import { sounds, haptics } from '../../store/gameStore';
 import RelayMinesweeper from './RelayMinesweeper';
 import RelayAvalanche from './RelayAvalanche';
 import RelayBlackjack from './RelayBlackjack';
-import FriendsScreen from './FriendsScreen';
 
 type GameType = 'minesweeper' | 'avalanche' | 'blackjack';
 
-export default function P2PMultiplayer() {
-  const [view, setView] = useState<'menu' | 'gameSelect' | 'host' | 'join' | 'game' | 'detecting' | 'friends'>('menu');
+interface Props {
+  inviteJoinRoom?: string | null;
+  onInviteConsumed?: () => void;
+}
+
+export default function P2PMultiplayer({ inviteJoinRoom, onInviteConsumed }: Props) {
+  const [view, setView] = useState<'menu' | 'gameSelect' | 'host' | 'game' | 'detecting'>('menu');
   const [hostId, setHostId] = useState('');
   const [joinId, setJoinId] = useState('');
   const [isHost, setIsHost] = useState(false);
   const [connected, setConnected] = useState(false);
   const [selectedGame, setSelectedGame] = useState<GameType>('minesweeper');
-  // For joiners: sniff game type from first game_state broadcast
   const detectedGame = useRef<GameType | null>(null);
+
+  // If we were given a room to join via invite, go straight to detecting
+  useEffect(() => {
+    if (inviteJoinRoom) {
+      setIsHost(false);
+      setView('detecting');
+      onInviteConsumed?.();
+    }
+  }, [inviteJoinRoom]);
 
   const handleHost = () => {
     setView('gameSelect');
@@ -108,19 +120,6 @@ export default function P2PMultiplayer() {
     );
   }
 
-  if (view === 'friends') {
-    return (
-      <div className="h-full flex flex-col">
-        <div className="px-5 py-4">
-          <button onClick={() => setView('menu')} className="text-white/60 text-sm">← Back</button>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <FriendsScreen onInvite={handleInviteFriend} />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full overflow-y-auto" style={{ paddingTop: 72, paddingBottom: 100 }}>
       {view === 'menu' && (
@@ -175,18 +174,6 @@ export default function P2PMultiplayer() {
                 Join
               </button>
             </div>
-
-            <button
-              onClick={() => setView('friends')}
-              className="w-full py-3 rounded-2xl font-bold"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: '#fff',
-              }}
-            >
-              👤 Friends
-            </button>
           </>
         )}
 

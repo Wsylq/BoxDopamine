@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { relayService } from '../../services/relayService';
 import { sounds, haptics, formatCurrency, getState, addBalance } from '../../store/gameStore';
+import InviteFriendsPanel from './InviteFriendsPanel';
 
 interface Props {
   isHost: boolean;
@@ -718,6 +719,9 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
               <div>• Clear all safe cells to win together</div>
             </div>
           </div>
+
+          {/* Invite friends — host only */}
+          {isHost && <InviteFriendsPanel gameType="minesweeper" currentPlayers={game.players.map(p => p.username)} />}
           
           {/* Set Bet */}
           {!myPlayer?.bet && (

@@ -4,6 +4,9 @@ import { getState, subscribe, formatCurrency, resetBalance, sounds, haptics } fr
 import GameReel from './components/GameReel';
 import ParticleEffect from './components/ParticleEffect';
 import P2PMultiplayer from './components/multiplayer/P2PMultiplayer';
+import FriendsScreen from './components/multiplayer/FriendsScreen';
+import { relayService } from './services/relayService';
+import { friendsService, GameInvite } from './services/friendsService';
 
 const GOAL = 10_000_000;
 
@@ -17,12 +20,20 @@ function StatRow({ label, value, accent }: { label: string; value: string; accen
   );
 }
 
-type Tab = 'feed' | 'stats' | 'multiplayer';
+type Tab = 'feed' | 'stats' | 'multiplayer' | 'friends';
+
+const GAME_LABELS: Record<string, string> = {
+  minesweeper: '💣 Team Minesweeper',
+  avalanche:   '🏔️ Avalanche',
+  blackjack:   '🃏 Collective Blackjack',
+};
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('feed');
   const [gameState, setGameState] = useState(getState());
   const [showParticles, setShowParticles] = useState(false);
+  const [pendingInvite, setPendingInvite] = useState<GameInvite | null>(null);
+  const [inviteJoinRoom, setInviteJoinRoom] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = subscribe(() => {
@@ -49,6 +60,29 @@ export default function App() {
     setTab(t);
     sounds.swoosh();
     haptics.light();
+  }, []);
+
+  // Global relay listener for incoming game invites
+  useEffect(() => {
+    // Connect a dedicated presence channel on the username room.
+    // This stays alive even when the main game connection changes.
+    const username = relayService.getUsername();
+    relayService.connectPresence(username);
+
+    const unsub = relayService.subscribe((data) => {
+      if (data.type === 'game_invite') {
+        const invite: GameInvite = {
+          fromUsername: data.fromUsername,
+          roomId: data.roomId,
+          gameType: data.gameType,
+          receivedAt: Date.now(),
+        };
+        setPendingInvite(invite);
+        sounds.reward();
+        haptics.heavy();
+      }
+    });
+    return () => unsub();
   }, []);
 
   return (
@@ -83,7 +117,23 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="absolute inset-0"
             >
-              <P2PMultiplayer />
+              <P2PMultiplayer
+                inviteJoinRoom={inviteJoinRoom}
+                onInviteConsumed={() => setInviteJoinRoom(null)}
+              />
+            </motion.div>
+          )}
+
+          {tab === 'friends' && (
+            <motion.div
+              key="friends"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0"
+            >
+              <FriendsScreen />
             </motion.div>
           )}
 
@@ -195,6 +245,70 @@ export default function App() {
         </AnimatePresence>
       </div>
 
+      {/* ── Game Invite Overlay ── */}
+      <AnimatePresence>
+        {pendingInvite && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 flex items-center justify-center px-6 z-[200]"
+            style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.85, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.85, y: 20 }}
+              className="w-full max-w-sm rounded-3xl p-6 text-center"
+              style={{
+                background: 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.15))',
+                border: '1px solid rgba(59,130,246,0.4)',
+                boxShadow: '0 0 40px rgba(59,130,246,0.2)',
+              }}
+            >
+              <div className="text-4xl mb-3">🎮</div>
+              <div className="text-white font-black text-xl mb-1">Game Invite!</div>
+              <div className="text-white/70 text-sm mb-1">
+                <span className="text-white font-bold">{pendingInvite.fromUsername}</span> invited you to
+              </div>
+              <div className="text-white font-bold text-lg mb-4">
+                {GAME_LABELS[pendingInvite.gameType] ?? pendingInvite.gameType}
+              </div>
+              <div className="text-white/40 text-xs mb-5 font-mono">Room: {pendingInvite.roomId}</div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setPendingInvite(null);
+                    sounds.click();
+                    haptics.light();
+                  }}
+                  className="flex-1 py-3 rounded-xl font-bold"
+                  style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', color: '#ef4444' }}
+                >
+                  Decline
+                </button>
+                <button
+                  onClick={() => {
+                    const roomId = pendingInvite.roomId;
+                    setPendingInvite(null);
+                    relayService.disconnect();
+                    relayService.connect(false, roomId);
+                    setInviteJoinRoom(roomId);
+                    setTab('multiplayer');
+                    sounds.reward();
+                    haptics.heavy();
+                  }}
+                  className="flex-1 py-3 rounded-xl font-bold"
+                  style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff' }}
+                >
+                  Accept 🎯
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Floating Liquid Glass Bottom Nav ── */}
       <div className="absolute bottom-0 left-0 right-0 flex justify-center z-50"
         style={{ 
@@ -211,6 +325,7 @@ export default function App() {
         > {...([
             { id: 'feed' as Tab, emoji: '🎮', label: 'Play' },
             { id: 'multiplayer' as Tab, emoji: '👥', label: 'Multi' },
+            { id: 'friends' as Tab, emoji: '👤', label: 'Friends' },
             { id: 'stats' as Tab, emoji: '📊', label: 'Stats' },
           ]).map((item, idx, arr) => {
             const isActive = tab === item.id;

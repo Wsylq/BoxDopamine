@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { relayService } from '../../services/relayService';
 import { sounds, haptics, formatCurrency, getState, addBalance } from '../../store/gameStore';
+import InviteFriendsPanel from './InviteFriendsPanel';
 
 interface Props { isHost: boolean; onBack: () => void; }
 
@@ -462,6 +463,9 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
               <div>• Bust or lose = everyone loses their bet</div>
             </div>
           </div>
+
+          {/* Invite friends — host only */}
+          {isHost && <InviteFriendsPanel gameType="blackjack" currentPlayers={game.players.map(p => p.username)} />}
           {!myPlayer?.bet && (
             <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <div className="text-white font-bold mb-2">Set Your Bet</div>

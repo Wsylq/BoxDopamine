@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { relayService } from '../../services/relayService';
 import { sounds, haptics, formatCurrency, getState, addBalance } from '../../store/gameStore';
+import InviteFriendsPanel from './InviteFriendsPanel';
 
 interface Props {
   isHost: boolean;
@@ -557,6 +558,9 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
               <div>• More tiles revealed = higher multiplier 📈</div>
             </div>
           </div>
+
+          {/* Invite friends — host only */}
+          {isHost && <InviteFriendsPanel gameType="avalanche" currentPlayers={game.players.map(p => p.username)} />}
 
           {/* Bet */}
           {!myPlayer?.bet && (
