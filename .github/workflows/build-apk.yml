@@ -157,14 +157,14 @@ jobs:
 
       - name: Inject app icons
         run: |
+          pip install Pillow --quiet
           python3 - << 'PYEOF'
           from PIL import Image
-          import os, shutil
+          import os
 
           src = "public/app-icon/logo.jpeg"
           img = Image.open(src).convert("RGBA")
 
-          # (density, launcher_size, foreground_size)
           densities = [
               ("mdpi",    48,  108),
               ("hdpi",    72,  162),
@@ -181,7 +181,6 @@ jobs:
               img.resize((fg_px, fg_px), Image.Resampling.LANCZOS).save(f"{folder}/ic_launcher_foreground.png")
               print(f"✅ {density}: {launcher_px}px launcher, {fg_px}px foreground")
 
-          # Set black background
           bg = "android/app/src/main/res/values/ic_launcher_background.xml"
           if os.path.exists(bg):
               with open(bg) as f:
