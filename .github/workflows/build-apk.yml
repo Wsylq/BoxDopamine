@@ -155,6 +155,43 @@ jobs:
       - name: Copy web assets to Android
         run: npx cap copy android
 
+      - name: Inject app icons
+        run: |
+          python3 - << 'PYEOF'
+          from PIL import Image
+          import os, shutil
+
+          src = "public/app-icon/logo.jpeg"
+          img = Image.open(src).convert("RGBA")
+
+          # (density, launcher_size, foreground_size)
+          densities = [
+              ("mdpi",    48,  108),
+              ("hdpi",    72,  162),
+              ("xhdpi",   96,  216),
+              ("xxhdpi",  144, 324),
+              ("xxxhdpi", 192, 432),
+          ]
+
+          for density, launcher_px, fg_px in densities:
+              folder = f"android/app/src/main/res/mipmap-{density}"
+              os.makedirs(folder, exist_ok=True)
+              img.resize((launcher_px, launcher_px), Image.Resampling.LANCZOS).save(f"{folder}/ic_launcher.png")
+              img.resize((launcher_px, launcher_px), Image.Resampling.LANCZOS).save(f"{folder}/ic_launcher_round.png")
+              img.resize((fg_px, fg_px), Image.Resampling.LANCZOS).save(f"{folder}/ic_launcher_foreground.png")
+              print(f"✅ {density}: {launcher_px}px launcher, {fg_px}px foreground")
+
+          # Set black background
+          bg = "android/app/src/main/res/values/ic_launcher_background.xml"
+          if os.path.exists(bg):
+              with open(bg) as f:
+                  content = f.read()
+              content = content.replace("#6200EE", "#000000").replace("#FFFFFF", "#000000")
+              with open(bg, "w") as f:
+                  f.write(content)
+              print("✅ Background set to #000000")
+          PYEOF
+
       - name: Sync Capacitor
         run: npx cap sync android
 
