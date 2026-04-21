@@ -6,8 +6,8 @@ Here's an honest breakdown of what's missing before this is publishable:
 
 **Backend & persistence**
 - <s>Real user accounts (username + password or OAuth) — right now usernames are just localStorage strings, anyone can impersonate anyone</s>
-- Server-side game state validation — the host controls everything client-side, trivially cheatable
-- Persistent balance stored server-side, not localStorage — currently anyone can open DevTools and set their balance to $1B
+- <s>Server-side game state validation — the host controls everything client-side, trivially cheatable
+- Persistent balance stored server-side, not localStorage — currently anyone can open DevTools and set their balance to $1B </s>
 - HTTPS + WSS — plain ws:// breaks on any HTTPS deployment
 
 **Core gameplay gaps**

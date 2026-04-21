@@ -2,6 +2,8 @@
 // Auth Service — register / login over WebSocket (same port as relay)
 // ═══════════════════════════════════════════════════════════
 
+import { balanceService } from './balanceService';
+
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://node05.host2play.gratis:5038';
 const TOKEN_KEY = 'dopamine_auth_token';
 const USER_KEY  = 'dopamine_auth_user';
@@ -30,7 +32,7 @@ function authRequest(type: 'auth_register' | 'auth_login', username: string, pas
         const data = JSON.parse(event.data);
         if (data.type === 'auth_ok') {
           ws.close();
-          resolve({ username: data.username, token: data.token });
+          resolve({ username: data.username, token: data.token, balance: data.balance ?? 1000 } as any);
         } else if (data.type === 'auth_error') {
           ws.close();
           reject(new Error(data.error || 'Auth failed'));
@@ -94,12 +96,14 @@ class AuthService {
     return () => this.listeners.delete(fn);
   }
 
-  private saveSession(user: AuthUser): AuthUser {
+  private saveSession(user: AuthUser & { balance?: number }): AuthUser {
     localStorage.setItem(TOKEN_KEY, user.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    localStorage.setItem(USER_KEY, JSON.stringify({ username: user.username, token: user.token }));
     localStorage.setItem('relay_username', user.username);
-    this.notify(user);
-    return user;
+    // Init server-side balance
+    balanceService.init(user.balance ?? 1000);
+    this.notify({ username: user.username, token: user.token });
+    return { username: user.username, token: user.token };
   }
 
   private notify(user: AuthUser | null) {

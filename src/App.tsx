@@ -38,6 +38,33 @@ export default function App() {
   const [pendingInvite, setPendingInvite] = useState<GameInvite | null>(null);
   const [inviteJoinRoom, setInviteJoinRoom] = useState<string | null>(null);
 
+  // On refresh: already logged in but balanceService not initialized — fetch from server
+  useEffect(() => {
+    if (!authService.isLoggedIn()) return;
+    const user = authService.getUser();
+    if (!user) return;
+    // Re-fetch balance by sending auth_login over WS with stored token
+    // We do this by opening a one-shot WS and sending a balance_fetch request
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://node05.host2play.gratis:5038';
+    const ws = new WebSocket(wsUrl);
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'balance_fetch', token: user.token }));
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'balance_update' || data.type === 'balance_ok') {
+          import('./services/balanceService').then(({ balanceService }) => {
+            balanceService.init(data.balance);
+          });
+          ws.close();
+        }
+      } catch {}
+    };
+    ws.onerror = () => ws.close();
+    return () => ws.close();
+  }, []);
+
   useEffect(() => {
     const unsub = subscribe(() => {
       const prev = gameState.balance;

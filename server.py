@@ -35,6 +35,35 @@ def save_users(users: dict):
 
 users_db: dict = load_users()
 
+# ── Balance helpers ───────────────────────────────────────────────────────────
+def get_balance(username: str) -> int:
+    key = username.lower()
+    user = users_db.get(key, {})
+    return user.get('balance', 1000)
+
+def set_balance(username: str, balance: int):
+    key = username.lower()
+    if key in users_db:
+        users_db[key]['balance'] = max(0, balance)
+        save_users(users_db)
+
+def verify_token(token: str) -> str | None:
+    try:
+        parts = token.split('.')
+        if len(parts) != 3:
+            return None
+        header, payload, sig = parts
+        sig_in   = f"{header}.{payload}".encode()
+        expected = base64.urlsafe_b64encode(
+            hmac.new(JWT_SECRET.encode(), sig_in, hashlib.sha256).digest()
+        ).decode().rstrip('=')
+        if not hmac.compare_digest(sig, expected):
+            return None
+        data = json.loads(base64.urlsafe_b64decode(payload + '=='))
+        return data.get('sub')
+    except Exception:
+        return None
+
 # ── Crypto helpers ────────────────────────────────────────────────────────────
 def hash_password(password: str) -> str:
     salt = os.urandom(16)
@@ -77,11 +106,11 @@ async def ws_register(websocket: WebSocketServerProtocol, data: dict):
         await websocket.send(json.dumps({'type':'auth_error','error':'Username already taken'}))
         return
 
-    users_db[key] = {'username': username, 'password_hash': hash_password(password)}
+    users_db[key] = {'username': username, 'password_hash': hash_password(password), 'balance': 1000}
     save_users(users_db)
     token = make_token(username)
     logger.info(f"✅ Registered: {username}")
-    await websocket.send(json.dumps({'type':'auth_ok','username': username,'token': token}))
+    await websocket.send(json.dumps({'type':'auth_ok','username': username,'token': token,'balance': 1000}))
 
 async def ws_login(websocket: WebSocketServerProtocol, data: dict):
     username = (data.get('username') or '').strip()
@@ -95,7 +124,57 @@ async def ws_login(websocket: WebSocketServerProtocol, data: dict):
 
     token = make_token(user['username'])
     logger.info(f"✅ Login: {user['username']}")
-    await websocket.send(json.dumps({'type':'auth_ok','username': user['username'],'token': token}))
+    await websocket.send(json.dumps({
+        'type': 'auth_ok',
+        'username': user['username'],
+        'token': token,
+        'balance': get_balance(user['username']),
+    }))
+
+# Max win per single game — prevents impossible payouts
+MAX_WIN = 500_000
+MAX_BET = 100_000
+
+async def ws_game_result(websocket: WebSocketServerProtocol, data: dict):
+    """
+    Client sends: { type:'game_result', token, delta, gameId }
+    delta > 0 = win (payout), delta < 0 = loss (bet deducted)
+    Server validates token, clamps delta, updates balance.
+    """
+    token   = data.get('token') or ''
+    delta   = data.get('delta', 0)
+    game_id = data.get('gameId', 'unknown')
+
+    username = verify_token(token)
+    if not username:
+        await websocket.send(json.dumps({'type':'balance_error','error':'Invalid token'}))
+        return
+
+    # Validate delta bounds
+    try:
+        delta = int(delta)
+    except (TypeError, ValueError):
+        await websocket.send(json.dumps({'type':'balance_error','error':'Invalid delta'}))
+        return
+
+    if delta > MAX_WIN:
+        logger.warning(f"⚠️  Clamping win {delta} → {MAX_WIN} for {username}")
+        delta = MAX_WIN
+    if delta < -MAX_BET:
+        logger.warning(f"⚠️  Clamping loss {delta} → {-MAX_BET} for {username}")
+        delta = -MAX_BET
+
+    old_balance = get_balance(username)
+    new_balance = max(0, old_balance + delta)
+    set_balance(username, new_balance)
+
+    logger.info(f"💰 {username} {'+' if delta >= 0 else ''}{delta} ({game_id}) → ${new_balance}")
+    await websocket.send(json.dumps({
+        'type': 'balance_update',
+        'balance': new_balance,
+        'delta': delta,
+        'gameId': game_id,
+    }))
 
 # ── Relay state ───────────────────────────────────────────────────────────────
 rooms:     Dict[str, Set[WebSocketServerProtocol]] = {}
@@ -111,6 +190,20 @@ async def process_message(websocket: WebSocketServerProtocol, data: dict):
         return
     if msg_type == 'auth_login':
         await ws_login(websocket, data)
+        return
+    if msg_type == 'game_result':
+        await ws_game_result(websocket, data)
+        return
+    if msg_type == 'balance_fetch':
+        token = data.get('token') or ''
+        username = verify_token(token)
+        if username:
+            await websocket.send(json.dumps({
+                'type': 'balance_ok',
+                'balance': get_balance(username),
+            }))
+        else:
+            await websocket.send(json.dumps({'type': 'balance_error', 'error': 'Invalid token'}))
         return
 
     if msg_type == 'join_room':

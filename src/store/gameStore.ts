@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { balanceService } from '../services/balanceService';
 
 export type GameId = 'coinflip' | 'higherlower' | 'plinko' | 'scratch' | 'dice';
 
@@ -66,12 +67,28 @@ function notify() {
   listeners.forEach(fn => fn());
 }
 
+// When server updates balance, notify all store subscribers
+balanceService.subscribe(() => notify());
+
 export function getState() {
-  return { ..._state };
+  // Balance is always read from balanceService (server-authoritative)
+  // Use _serverBalanceReady flag to avoid showing stale localStorage balance
+  return { ..._state, balance: _serverBalanceReady ? balanceService.balance : _state.balance };
 }
 
-export function addBalance(amount: number) {
-  _state.balance = Math.max(0, _state.balance + amount);
+let _serverBalanceReady = false;
+
+// Called by authService after login/register with server balance
+export function setServerBalance(balance: number) {
+  _serverBalanceReady = true;
+  // Also update _state so localStorage stays roughly in sync
+  _state.balance = balance;
+  saveState(_state);
+  notify();
+}
+
+export function addBalance(amount: number, gameId = 'solo') {
+  // Update stats locally
   if (amount > 0) {
     if (amount > _state.biggestWin) _state.biggestWin = amount;
     _state.totalWins += 1;
@@ -80,11 +97,14 @@ export function addBalance(amount: number) {
   }
   _state.lastPlayed = new Date().toDateString();
   saveState(_state);
-  notify();
+  // Optimistic update + server sync — balanceService calls setServerBalance which calls notify()
+  balanceService.reportResult(amount, gameId);
 }
 
 export function resetBalance() {
-  _state.balance = 1000;
+  const current = balanceService.balance;
+  const delta = 1000 - current;
+  balanceService.reportResult(delta, 'reset');
   saveState(_state);
   notify();
 }
