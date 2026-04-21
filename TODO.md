@@ -5,13 +5,12 @@ Here's an honest breakdown of what's missing before this is publishable:
 ## Must-haves (blockers)
 
 **Backend & persistence**
-- <s>Real user accounts (username + password or OAuth) — right now usernames are just localStorage strings, anyone can impersonate anyone</s>
-- <s>Server-side game state validation — the host controls everything client-side, trivially cheatable
-- Persistent balance stored server-side, not localStorage — currently anyone can open DevTools and set their balance to $1B </s>
+- [x] Real user accounts (username + password or OAuth) — right now usernames are just localStorage strings, anyone can impersonate anyone
+- [x] Server-side game state validation — the host controls everything client-side, trivially cheatable
+- [x] Persistent balance stored server-side, not localStorage — currently anyone can open DevTools and set their balance to $1B
 - HTTPS + WSS — plain ws:// breaks on any HTTPS deployment
 
 **Core gameplay gaps**
-- Sound effects that actually work — `sounds.flip()`, `sounds.reward()` etc. need real audio files wired up
 - Mobile touch polish — tap targets, scroll behavior, safe area insets on notched phones
 - Loading/error states — if the WebSocket server is down, users just see "Connecting..." forever with no retry UI or error message
 
@@ -22,7 +21,7 @@ Here's an honest breakdown of what's missing before this is publishable:
 **Progression & retention**
 - Daily login bonus — streak system is already tracked, just needs a reward
 - Leaderboard — top balances, biggest wins, most games played
-- Achievement badges — "Survived 10 tiles", "Team cashout at 50x", "Blackjack natural 21"
+- [x] Achievement badges — "Survived 10 tiles", "Team cashout at 50x", "Blackjack natural 21"
 - Level/XP system — unlock higher bet limits or cosmetic card backs as you level up
 
 **Social**

@@ -6,9 +6,11 @@ import ParticleEffect from './components/ParticleEffect';
 import P2PMultiplayer from './components/multiplayer/P2PMultiplayer';
 import FriendsScreen from './components/multiplayer/FriendsScreen';
 import AuthScreen from './components/AuthScreen';
+import AchievementToast from './components/AchievementToast';
 import { relayService } from './services/relayService';
 import { friendsService, GameInvite } from './services/friendsService';
 import { authService } from './services/authService';
+import { achievementService } from './services/achievementService';
 
 const GOAL = 10_000_000;
 
@@ -37,6 +39,12 @@ export default function App() {
   const [showParticles, setShowParticles] = useState(false);
   const [pendingInvite, setPendingInvite] = useState<GameInvite | null>(null);
   const [inviteJoinRoom, setInviteJoinRoom] = useState<string | null>(null);
+  const [, setAchievementTick] = useState(0); // forces re-render on unlock
+
+  useEffect(() => {
+    const unsub = achievementService.onUnlock(() => setAchievementTick(t => t + 1));
+    return unsub;
+  }, []);
 
   // On refresh: already logged in but balanceService not initialized — fetch from server
   useEffect(() => {
@@ -132,6 +140,7 @@ export default function App() {
       )}
 
       {authed && (<>
+      <AchievementToast />
       {showParticles && <ParticleEffect active={showParticles} originX={0.5} originY={0.08} />}
 
       {/* ── Content Area ── */}
@@ -281,6 +290,39 @@ export default function App() {
                 >
                   🔄 Reset Balance to $1,000
                 </button>
+
+                {/* Achievements */}
+                {(() => {
+                  const all = achievementService.getAll();
+                  const unlocked = all.filter(a => a.unlockedAt);
+                  return (
+                    <div className="rounded-3xl p-5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div className="text-white/40 text-xs font-bold mb-3 tracking-widest uppercase">
+                        🏅 Achievements ({unlocked.length}/{all.length})
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {all.map(a => (
+                          <div key={a.id}
+                            className="rounded-2xl p-3 text-center flex flex-col items-center gap-1"
+                            style={{
+                              background: a.unlockedAt ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.03)',
+                              border: `1px solid ${a.unlockedAt ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                              opacity: a.unlockedAt ? 1 : 0.4,
+                            }}>
+                            <div className="text-2xl" style={{ filter: a.unlockedAt ? 'none' : 'grayscale(1)' }}>{a.emoji}</div>
+                            <div className="text-white font-bold text-xs leading-tight">{a.name}</div>
+                            <div className="text-white/40 text-xs leading-tight">{a.desc}</div>
+                            {a.unlockedAt && (
+                              <div className="text-white/30 text-xs mt-0.5">
+                                {new Date(a.unlockedAt).toLocaleDateString()}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Account */}
                 <div className="rounded-3xl p-5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>

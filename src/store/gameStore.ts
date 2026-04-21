@@ -4,6 +4,7 @@
 
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { balanceService } from '../services/balanceService';
+import { achievementService } from '../services/achievementService';
 
 export type GameId = 'coinflip' | 'higherlower' | 'plinko' | 'scratch' | 'dice';
 
@@ -55,6 +56,12 @@ if (_state.lastPlayed !== today) {
   saveState(_state);
 }
 
+// Streak achievements (checked on load)
+setTimeout(() => {
+  if (_state.streak >= 3) achievementService.unlock('streak_3');
+  if (_state.streak >= 7) achievementService.unlock('streak_7');
+}, 500);
+
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
@@ -67,8 +74,14 @@ function notify() {
   listeners.forEach(fn => fn());
 }
 
-// When server updates balance, notify all store subscribers
-balanceService.subscribe(() => notify());
+// When server updates balance, notify all store subscribers + check balance achievements
+balanceService.subscribe((balance) => {
+  notify();
+  // Balance milestones
+  if (balance >= 10_000)    achievementService.unlock('balance_10k');
+  if (balance >= 100_000)   achievementService.unlock('balance_100k');
+  if (balance >= 1_000_000) achievementService.unlock('balance_1m');
+});
 
 export function getState() {
   // Balance is always read from balanceService (server-authoritative)
@@ -88,16 +101,18 @@ export function setServerBalance(balance: number) {
 }
 
 export function addBalance(amount: number, gameId = 'solo') {
-  // Update stats locally
   if (amount > 0) {
     if (amount > _state.biggestWin) _state.biggestWin = amount;
     _state.totalWins += 1;
+    // Win achievements
+    if (_state.totalWins === 1) achievementService.unlock('first_win');
+    if (amount >= 500)  achievementService.unlock('big_win_500');
+    if (amount >= 5000) achievementService.unlock('big_win_5000');
   } else if (amount < 0) {
     _state.totalLosses += 1;
   }
   _state.lastPlayed = new Date().toDateString();
   saveState(_state);
-  // Optimistic update + server sync — balanceService calls setServerBalance which calls notify()
   balanceService.reportResult(amount, gameId);
 }
 

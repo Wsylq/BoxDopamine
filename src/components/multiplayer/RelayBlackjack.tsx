@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { relayService } from '../../services/relayService';
 import { sounds, haptics, formatCurrency, getState, addBalance } from '../../store/gameStore';
 import InviteFriendsPanel from './InviteFriendsPanel';
+import { achievementService } from '../../services/achievementService';
 
 interface Props { isHost: boolean; onBack: () => void; }
 
@@ -297,9 +298,25 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
     if (!game || game.phase !== 'game_over' || paidOut) return;
     const me = game.players.find(p => p.id === myId);
     if (!me || me.bet <= 0) return;
-    if (game.result === 'win') { addBalance(Math.floor(me.bet * 2)); sounds.reward(); haptics.blackjackWin(); }
-    else if (game.result === 'push') { addBalance(me.bet); sounds.coin(); haptics.medium(); }
-    // lose: nothing returned
+    if (game.result === 'win') {
+      addBalance(Math.floor(me.bet * 2));
+      sounds.reward();
+      haptics.blackjackWin();
+      achievementService.unlock('bj_win');
+      achievementService.unlock('play_multiplayer');
+      // Natural 21 = 2 cards totalling 21
+      if (game.playerHand.length === 2 && game.playerTotal === 21) {
+        achievementService.unlock('bj_natural_21');
+      }
+      // Track wins count
+      const wins = (parseInt(localStorage.getItem('bj_wins') || '0')) + 1;
+      localStorage.setItem('bj_wins', String(wins));
+      if (wins >= 5) achievementService.unlock('bj_win_5');
+    } else if (game.result === 'push') {
+      addBalance(me.bet);
+      sounds.coin();
+      haptics.medium();
+    }
     setPaidOut(true);
   }, [game?.phase, game?.result]);
 

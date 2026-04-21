@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { relayService } from '../../services/relayService';
 import { sounds, haptics, formatCurrency, getState, addBalance } from '../../store/gameStore';
 import InviteFriendsPanel from './InviteFriendsPanel';
+import { achievementService } from '../../services/achievementService';
 
 interface Props {
   isHost: boolean;
@@ -429,9 +430,14 @@ export default function RelayMinesweeper({ isHost, onBack }: Props) {
       const me = game.players.find(p => p.id === myId);
       if (me && me.bet > 0) {
         const payout = Math.floor(me.bet * game.multiplier);
-        console.log(`💰 Payout: $${payout} (bet $${me.bet} × ${game.multiplier.toFixed(2)}x) for ${me.username}`);
         addBalance(payout);
         setPaidOut(true);
+        achievementService.unlock('ms_win');
+        achievementService.unlock('play_multiplayer');
+        if (game.mineCount >= 15) achievementService.unlock('ms_15_mines');
+        const msWins = (parseInt(localStorage.getItem('ms_wins') || '0')) + 1;
+        localStorage.setItem('ms_wins', String(msWins));
+        if (msWins >= 5) achievementService.unlock('ms_win_5');
       }
     }
     // Reset paidOut when a new game starts

@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { relayService } from '../../services/relayService';
 import { sounds, haptics, formatCurrency, getState, addBalance } from '../../store/gameStore';
 import InviteFriendsPanel from './InviteFriendsPanel';
+import { achievementService } from '../../services/achievementService';
 
 interface Props {
   isHost: boolean;
@@ -370,6 +371,15 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
         setPaidOut(true);
         sounds.reward();
         haptics.cashout();
+        // Achievements
+        achievementService.unlock('play_multiplayer');
+        const safeRevealed = game.tiles.filter(t => t.revealed && !t.isBomb).length;
+        if (safeRevealed >= 5)  achievementService.unlock('av_survive_5');
+        if (safeRevealed >= 10) achievementService.unlock('av_survive_10');
+        if (safeRevealed >= 15) achievementService.unlock('av_survive_15');
+        if (game.multiplier >= 10)  achievementService.unlock('av_cashout_10x');
+        if (game.multiplier >= 50)  achievementService.unlock('av_cashout_50x');
+        if (game.multiplier >= 100) achievementService.unlock('av_cashout_100x');
       }
     }
     if (game.phase === 'waiting') setPaidOut(false);
