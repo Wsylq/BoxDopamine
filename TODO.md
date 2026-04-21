@@ -36,11 +36,11 @@ Here's an honest breakdown of what's missing before this is publishable:
 - **Higher or Lower** — already exists as solo, make it team-based with voting
 
 **Polish**
-- Onboarding flow — first-time tutorial explaining the concept
-- Haptic patterns that match game events (different buzz for win vs loss vs bomb)
-- Card flip animations in Blackjack (3D CSS transform, not just spring scale)
-- Avalanche tile reveal with a camera shake on bomb hit
-- Dark/light theme toggle
+- <S>Onboarding flow — first-time tutorial explaining the concept</s>
+- [x] Haptic patterns that match game events (different buzz for win vs loss vs bomb)
+- [x] Card flip animations in Blackjack (3D CSS transform, not just spring scale)
+- [x] Avalanche tile reveal with a camera shake on bomb hit
+- <s>Dark/light theme toggle</S>
 
 ---
 
