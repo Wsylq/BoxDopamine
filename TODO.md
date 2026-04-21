@@ -5,7 +5,7 @@ Here's an honest breakdown of what's missing before this is publishable:
 ## Must-haves (blockers)
 
 **Backend & persistence**
-- Real user accounts (username + password or OAuth) — right now usernames are just localStorage strings, anyone can impersonate anyone
+- <s>Real user accounts (username + password or OAuth) — right now usernames are just localStorage strings, anyone can impersonate anyone</s>
 - Server-side game state validation — the host controls everything client-side, trivially cheatable
 - Persistent balance stored server-side, not localStorage — currently anyone can open DevTools and set their balance to $1B
 - HTTPS + WSS — plain ws:// breaks on any HTTPS deployment
@@ -29,6 +29,7 @@ Here's an honest breakdown of what's missing before this is publishable:
 - In-game emoji reactions during multiplayer (👀 😱 💀) — one tap, shows floating above your avatar
 - Post-game share card — "We survived 15 tiles at 47x 🏔️" as a shareable image
 - Spectator mode — watch a friend's game live without playing
+- Friend sends request and option with either accept or reject.
 
 **More games**
 - **Pressure Cooker** (Crash) — multiplier climbs, everyone ejects when they want, last one before crash sets the team multiplier

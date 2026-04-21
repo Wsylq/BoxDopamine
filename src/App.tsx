@@ -5,8 +5,10 @@ import GameReel from './components/GameReel';
 import ParticleEffect from './components/ParticleEffect';
 import P2PMultiplayer from './components/multiplayer/P2PMultiplayer';
 import FriendsScreen from './components/multiplayer/FriendsScreen';
+import AuthScreen from './components/AuthScreen';
 import { relayService } from './services/relayService';
 import { friendsService, GameInvite } from './services/friendsService';
+import { authService } from './services/authService';
 
 const GOAL = 10_000_000;
 
@@ -29,6 +31,7 @@ const GAME_LABELS: Record<string, string> = {
 };
 
 export default function App() {
+  const [authed, setAuthed] = useState(authService.isLoggedIn());
   const [tab, setTab] = useState<Tab>('feed');
   const [gameState, setGameState] = useState(getState());
   const [showParticles, setShowParticles] = useState(false);
@@ -64,8 +67,9 @@ export default function App() {
 
   // Global relay listener for incoming game invites
   useEffect(() => {
-    // Connect a dedicated presence channel on the username room.
-    // This stays alive even when the main game connection changes.
+    if (!authed) return;
+    const user = authService.getUser();
+    if (user) relayService.username = user.username;
     const username = relayService.getUsername();
     relayService.connectPresence(username);
 
@@ -83,13 +87,24 @@ export default function App() {
       }
     });
     return () => unsub();
-  }, []);
+  }, [authed]);
 
   return (
     <div
       className="fixed inset-0 flex flex-col"
       style={{ background: '#000', maxWidth: 430, margin: '0 auto' }}
     >
+      {/* ── Auth gate ── */}
+      {!authed && (
+        <AuthScreen onAuth={() => {
+          // Ensure relay username is set from the logged-in user
+          const user = authService.getUser();
+          if (user) relayService.username = user.username;
+          setAuthed(true);
+        }} />
+      )}
+
+      {authed && (<>
       {showParticles && <ParticleEffect active={showParticles} originX={0.5} originY={0.08} />}
 
       {/* ── Content Area ── */}
@@ -239,6 +254,27 @@ export default function App() {
                 >
                   🔄 Reset Balance to $1,000
                 </button>
+
+                {/* Account */}
+                <div className="rounded-3xl p-5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="text-white/40 text-xs font-bold mb-3 tracking-widest uppercase">Account</div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-white font-bold">{authService.getUser()?.username}</div>
+                      <div className="text-white/40 text-xs">Logged in</div>
+                    </div>
+                    <button onClick={() => {
+                      if (window.confirm('Log out?')) {
+                        authService.logout();
+                        setAuthed(false);
+                        sounds.click();
+                      }
+                    }} className="px-4 py-2 rounded-xl text-sm font-bold"
+                      style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>
+                      Log Out
+                    </button>
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
@@ -364,6 +400,7 @@ export default function App() {
           })}
         </motion.div>
         </div>
+        </>)}
         </div>
         );
         }
