@@ -73,49 +73,69 @@ function dealInitial(deck: Card[]): { playerHand: Card[]; dealerHand: Card[]; re
 
 function isRed(suit: Card['suit']) { return suit === '♥' || suit === '♦'; }
 
-// ── Card component ─────────────────────────────────────────
+// ── Card component — true 3D flip ─────────────────────────
 
 function PlayingCard({ card, faceDown = false, delay = 0 }: { card?: Card; faceDown?: boolean; delay?: number }) {
+  // The card slides in from above and flips from face-down to face-up
+  // We use a perspective wrapper + rotateY on the inner div
+  const cardFace = (
+    <div style={{
+      width: 72, height: 104, borderRadius: 10,
+      background: '#f8f8ff',
+      border: '1px solid #ccc',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+      position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      overflow: 'hidden', flexShrink: 0,
+      backfaceVisibility: 'hidden',
+    }}>
+      {card && <>
+        <div style={{ position: 'absolute', top: 5, left: 7, lineHeight: 1, color: isRed(card.suit) ? '#dc2626' : '#111' }}>
+          <div style={{ fontSize: 15, fontWeight: 900, fontFamily: 'Georgia, serif' }}>{card.rank}</div>
+          <div style={{ fontSize: 12, marginTop: -2 }}>{card.suit}</div>
+        </div>
+        <div style={{ fontSize: 32, color: isRed(card.suit) ? '#dc2626' : '#111', userSelect: 'none' }}>{card.suit}</div>
+        <div style={{ position: 'absolute', bottom: 5, right: 7, lineHeight: 1, transform: 'rotate(180deg)', color: isRed(card.suit) ? '#dc2626' : '#111' }}>
+          <div style={{ fontSize: 15, fontWeight: 900, fontFamily: 'Georgia, serif' }}>{card.rank}</div>
+          <div style={{ fontSize: 12, marginTop: -2 }}>{card.suit}</div>
+        </div>
+      </>}
+    </div>
+  );
+
+  const cardBack = (
+    <div style={{
+      width: 72, height: 104, borderRadius: 10,
+      background: 'linear-gradient(135deg, #1e3a5f 0%, #0f2040 50%, #1e3a5f 100%)',
+      border: '2px solid rgba(255,255,255,0.15)',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+      position: 'absolute', top: 0, left: 0,
+      backfaceVisibility: 'hidden',
+      transform: 'rotateY(180deg)',
+      overflow: 'hidden',
+    }}>
+      <div style={{ position: 'absolute', inset: 4, borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)',
+        background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 2px, transparent 2px, transparent 8px)' }} />
+    </div>
+  );
+
   return (
+    // Perspective wrapper
     <motion.div
-      initial={{ rotateY: 90, scale: 0.8, y: -20 }}
-      animate={{ rotateY: 0, scale: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 22, delay }}
-      style={{
-        width: 72, height: 104,
-        borderRadius: 10,
-        background: faceDown
-          ? 'linear-gradient(135deg, #1e3a5f 0%, #0f2040 50%, #1e3a5f 100%)'
-          : '#f8f8ff',
-        border: faceDown ? '2px solid rgba(255,255,255,0.15)' : '1px solid #ccc',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.1) inset',
-        position: 'relative',
-        flexShrink: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-      {faceDown ? (
-        // Card back — diamond pattern
-        <div style={{ position: 'absolute', inset: 4, borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)',
-          background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 2px, transparent 2px, transparent 8px)' }} />
-      ) : card ? (
-        <>
-          {/* Top-left rank + suit */}
-          <div style={{ position: 'absolute', top: 5, left: 7, lineHeight: 1, color: isRed(card.suit) ? '#dc2626' : '#111' }}>
-            <div style={{ fontSize: 15, fontWeight: 900, fontFamily: 'Georgia, serif' }}>{card.rank}</div>
-            <div style={{ fontSize: 12, marginTop: -2 }}>{card.suit}</div>
-          </div>
-          {/* Center suit */}
-          <div style={{ fontSize: 32, color: isRed(card.suit) ? '#dc2626' : '#111', userSelect: 'none' }}>{card.suit}</div>
-          {/* Bottom-right rank + suit (rotated) */}
-          <div style={{ position: 'absolute', bottom: 5, right: 7, lineHeight: 1, transform: 'rotate(180deg)', color: isRed(card.suit) ? '#dc2626' : '#111' }}>
-            <div style={{ fontSize: 15, fontWeight: 900, fontFamily: 'Georgia, serif' }}>{card.rank}</div>
-            <div style={{ fontSize: 12, marginTop: -2 }}>{card.suit}</div>
-          </div>
-        </>
-      ) : null}
+      initial={{ y: -30, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.25, delay }}
+      style={{ perspective: 600, flexShrink: 0, width: 72, height: 104 }}
+    >
+      {/* Inner flipper */}
+      <motion.div
+        initial={{ rotateY: faceDown ? 0 : 180 }}
+        animate={{ rotateY: faceDown ? 180 : 0 }}
+        transition={{ duration: 0.45, delay: delay + 0.1, ease: [0.4, 0, 0.2, 1] }}
+        style={{ position: 'relative', width: '100%', height: '100%', transformStyle: 'preserve-3d' }}
+      >
+        {cardFace}
+        {cardBack}
+      </motion.div>
     </motion.div>
   );
 }
@@ -218,7 +238,7 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
         if (!isHost) return;
         const g = gameRef.current;
         if (!g || !g.votingActive) return;
-        const newVotes = { ...g.votes, [data.playerId]: data.vote as VoteAction };
+        const newVotes = { ...g.votes, [data.playerId]: data.vote as VoteAction } as { [k: string]: VoteAction };
         const allVoted = g.players.every(p => newVotes[p.id] !== undefined);
         if (allVoted) {
           resolveVotes({ ...g, votes: newVotes });
@@ -277,7 +297,7 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
     if (!game || game.phase !== 'game_over' || paidOut) return;
     const me = game.players.find(p => p.id === myId);
     if (!me || me.bet <= 0) return;
-    if (game.result === 'win') { addBalance(Math.floor(me.bet * 2)); sounds.reward(); haptics.heavy(); }
+    if (game.result === 'win') { addBalance(Math.floor(me.bet * 2)); sounds.reward(); haptics.blackjackWin(); }
     else if (game.result === 'push') { addBalance(me.bet); sounds.coin(); haptics.medium(); }
     // lose: nothing returned
     setPaidOut(true);
@@ -296,7 +316,7 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
     }
     const updated: GameState = { ...base, deck: remaining, playerHand, dealerHand, dealerRevealed: false, playerTotal, dealerTotal, phase: 'voting', votes: {}, votingActive: true, result: null };
     setGame(updated); relayService.send({ type: 'game_state', game: updated });
-    sounds.flip(); haptics.medium();
+    sounds.flip(); haptics.cardFlip();
   };
 
   const resolveVotes = (g: GameState) => {
@@ -313,14 +333,14 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
         // Bust
         const updated: GameState = { ...g, deck: newDeck, playerHand: newHand, playerTotal: newTotal, dealerRevealed: true, dealerTotal: handTotal(g.dealerHand), phase: 'game_over', result: 'lose', votes: {}, votingActive: false };
         setGame(updated); relayService.send({ type: 'game_state', game: updated });
-        sounds.flip(); haptics.heavy();
+        sounds.flip(); haptics.blackjackBust();
       } else if (newTotal === 21) {
         // Auto-stand at 21
         runDealerTurn({ ...g, deck: newDeck, playerHand: newHand, playerTotal: newTotal, votes: {}, votingActive: false });
       } else {
         const updated: GameState = { ...g, deck: newDeck, playerHand: newHand, playerTotal: newTotal, phase: 'voting', votes: {}, votingActive: true };
         setGame(updated); relayService.send({ type: 'game_state', game: updated });
-        sounds.flip(); haptics.light();
+        sounds.flip(); haptics.cardFlip();
       }
     } else {
       // Stand — dealer plays
@@ -343,7 +363,10 @@ export default function RelayBlackjack({ isHost, onBack }: Props) {
     else result = 'lose';
     const updated: GameState = { ...g, deck, dealerHand, dealerTotal, dealerRevealed: true, phase: 'game_over', result, votes: {}, votingActive: false };
     setGame(updated); relayService.send({ type: 'game_state', game: updated });
-    sounds.flip(); haptics.medium();
+    sounds.flip();
+    if (result === 'win') haptics.blackjackWin();
+    else if (result === 'lose') haptics.blackjackBust();
+    else haptics.medium();
   };
 
   // ── Actions ────────────────────────────────────────────

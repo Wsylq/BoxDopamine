@@ -190,7 +190,7 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
         setGame(updated);
         relayService.send({ type: 'game_state', game: updated });
         sounds.flip();
-        haptics.heavy();
+        haptics.bomb();
       } else {
         const newRevealedCount = g.revealedCount + 1;
         // Count how many safe tiles have been revealed so far (for multiplier)
@@ -215,7 +215,7 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
         setGame(updated);
         relayService.send({ type: 'game_state', game: updated });
         sounds.flip();
-        haptics.medium();
+        haptics.safeTile();
       }
     }, 1800);
 
@@ -369,7 +369,7 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
         addBalance(Math.floor(me.bet * game.multiplier));
         setPaidOut(true);
         sounds.reward();
-        haptics.heavy();
+        haptics.cashout();
       }
     }
     if (game.phase === 'waiting') setPaidOut(false);
@@ -603,7 +603,13 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
 
       {/* ── GAME BOARD ── */}
       {(game.phase === 'revealing' || game.phase === 'voting' || game.phase === 'game_over') && (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <motion.div
+          className="flex-1 flex flex-col overflow-hidden"
+          animate={game.bombHitIndex >= 0 && game.phase === 'game_over'
+            ? { x: [0, -10, 10, -8, 8, -5, 5, 0], y: [0, -6, 6, -4, 4, 0] }
+            : { x: 0, y: 0 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        >
 
           {/* Stats bar */}
           <div className="px-5 mb-3 flex-shrink-0">
@@ -860,7 +866,7 @@ export default function RelayAvalanche({ isHost, onBack }: Props) {
               </motion.div>
             </div>
           )}
-        </div>
+        </motion.div>
       )}
 
       {/* ── CHAT ── */}

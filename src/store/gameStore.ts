@@ -208,4 +208,43 @@ export const haptics = {
       try { navigator.vibrate?.(p); } catch {}
     }
   },
+  // Distinct game-event patterns
+  async bomb() {
+    // Long thud + two short aftershocks
+    try { await Haptics.notification({ type: 'ERROR' }); } catch {}
+    try { navigator.vibrate?.([80, 40, 40, 40, 40]); } catch {}
+  },
+  async cashout() {
+    // Quick triple tap — satisfying
+    try {
+      await Haptics.impact({ style: ImpactStyle.Medium });
+      setTimeout(() => Haptics.impact({ style: ImpactStyle.Medium }), 80);
+      setTimeout(() => Haptics.impact({ style: ImpactStyle.Heavy }), 160);
+    } catch {}
+    try { navigator.vibrate?.([20, 40, 20, 40, 60]); } catch {}
+  },
+  async safeTile() {
+    // Single crisp light tap
+    try { await Haptics.impact({ style: ImpactStyle.Light }); } catch {}
+    try { navigator.vibrate?.(12); } catch {}
+  },
+  async cardFlip() {
+    // Soft click
+    try { await Haptics.impact({ style: ImpactStyle.Light }); } catch {}
+    try { navigator.vibrate?.(8); } catch {}
+  },
+  async blackjackWin() {
+    // Rising triple
+    try {
+      await Haptics.impact({ style: ImpactStyle.Light });
+      setTimeout(() => Haptics.impact({ style: ImpactStyle.Medium }), 100);
+      setTimeout(() => Haptics.notification({ type: 'SUCCESS' }), 220);
+    } catch {}
+    try { navigator.vibrate?.([15, 60, 25, 60, 50]); } catch {}
+  },
+  async blackjackBust() {
+    // Heavy single thud
+    try { await Haptics.notification({ type: 'ERROR' }); } catch {}
+    try { navigator.vibrate?.([120]); } catch {}
+  },
 };
